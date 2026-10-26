@@ -43,6 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 19) { self.devices.show(.brightness(0.72), for: 3) }
             if ProcessInfo.processInfo.environment["OSAWALLPAPER_ONBOARDING"] != nil { openOnboarding() }
             if ProcessInfo.processInfo.environment["OSAWALLPAPER_GALLERY"] != nil { openGallery() }
+            if ProcessInfo.processInfo.environment["OSAWALLPAPER_OVER_MUSIC"] != nil { prefs.wallpaperOverMusic = true }
             // OSAWALLPAPER_APPLY=<fichier ou lien> : utilise ce fond tout de suite.
             if let a = ProcessInfo.processInfo.environment["OSAWALLPAPER_APPLY"] {
                 if FileManager.default.fileExists(atPath: a) { WallpaperStore.shared.importFile(URL(fileURLWithPath: a)) }

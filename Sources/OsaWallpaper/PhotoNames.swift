@@ -30,6 +30,10 @@ final class PhotoNames: ObservableObject {
             raw = r
             names = r.mapValues { Self.name(from: $0.map { ($0[0], $0.count > 1 ? $0[1] : "") }) }
         }
+        if Demo.on, let f = ProcessInfo.processInfo.environment["OSAWALLPAPER_DEMO_TAGS"],
+           let d = try? Data(contentsOf: URL(fileURLWithPath: f)), let r = try? JSONDecoder().decode([String: [[String]]].self, from: d) {
+            for (k, v) in r { names[k] = Self.name(from: v.map { ($0[0], $0.count > 1 ? $0[1] : "") }) }
+        }
     }
 
     /// La photo est à l'écran : on veut son nom (en priorité si `urgent`, ex. sélectionnée).
@@ -72,7 +76,7 @@ final class PhotoNames: ObservableObject {
     }
 
     private func save() {
-        guard !dirty else { return }
+        guard !dirty, !Demo.on else { return }
         dirty = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
             guard let self else { return }
