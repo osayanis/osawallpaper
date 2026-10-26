@@ -3,6 +3,10 @@ import AppKit
 import IOKit.ps
 import CoreAudio
 import AudioToolbox
+import os
+import notify
+
+let log = Logger(subsystem: "com.osalabs.osawallpaper", category: "devices")
 
 struct Headphones: Equatable { var name: String; var level: Int?; var left: Int?; var right: Int?; var caseLevel: Int? }
 struct Weather: Equatable { var temp: Int; var code: Int; var isDay: Bool; var city: String }
@@ -10,10 +14,14 @@ struct Weather: Equatable { var temp: Int; var code: Int; var isDay: Bool; var c
 enum Toast: Equatable, Identifiable {
     case headphones(Headphones, volume: Float?)
     case charging(Int)
+    case volume(Float, muted: Bool, symbol: String)
+    case brightness(Float)
     var id: String {
         switch self {
         case .headphones(let h, _): return "hp-\(h.name)"
         case .charging: return "charging"
+        case .volume: return "volume"
+        case .brightness: return "brightness"
         }
     }
 }
@@ -32,6 +40,12 @@ final class Devices: ObservableObject {
     private var weatherTimer: Timer?, hpTimer: Timer?
     private var lastLocation: (lat: Double, lon: Double, city: String)?
     private var lastCity = ""
+    private var powerTokens: [Int32] = []
+    private var brightnessTimer: Timer?
+    private var lastBrightness: Float = -1
+    private var muted = false
+    private var brightnessKeyUntil: TimeInterval = 0
+    private var keyMonitor: Any?
 
     func start() {
         readBattery(initial: true)
@@ -41,8 +55,16 @@ final class Devices: ObservableObject {
             guard let ctx else { return }
             Unmanaged<Devices>.fromOpaque(ctx).takeUnretainedValue().readBattery(initial: false)
         }, ctx)?.takeRetainedValue() {
-            CFRunLoopAddSource(CFRunLoopGetMain(), src, .defaultMode)
+            CFRunLoopAddSource(CFRunLoopGetMain(), src, .commonModes)
         }
+        // Second canal (notify) : certains Mac n'envoient la notification IOKit qu'une fois sur deux.
+        for name in [kIOPSNotifyPowerSource, kIOPSNotifyAttach, kIOPSNotifyAnyPowerSource] {
+            var token: Int32 = 0
+            if notify_register_dispatch(name, &token, .main, { [weak self] _ in self?.readBattery(initial: false) }) == NOTIFY_STATUS_OK {
+                powerTokens.append(token)
+            }
+        }
+        startBrightness()
         watchOutput()
         refreshWeather()
         weatherTimer = Timer.scheduledTimer(withTimeInterval: 1800, repeats: true) { [weak self] _ in self?.refreshWeather() }
@@ -69,10 +91,13 @@ final class Devices: ObservableObject {
             guard let d = IOPSGetPowerSourceDescription(snap, ps)?.takeUnretainedValue() as? [String: Any],
                   let cap = d[kIOPSCurrentCapacityKey as String] as? Int else { continue }
             let charging = (d[kIOPSPowerSourceStateKey as String] as? String) == (kIOPSACPowerValue as String)
-            let was = battery?.charging
             DispatchQueue.main.async {
-                self.battery = (cap, charging)
-                if !initial, charging, was == false, Prefs.shared.showCharging { self.show(.charging(cap), for: 4) }
+                let was = self.battery?.charging
+                if was != charging || self.battery?.percent != cap { self.battery = (cap, charging) }
+                if !initial, charging, was == false {
+                    log.notice("secteur branché (\(cap) %)")
+                    if Prefs.shared.showCharging { self.show(.charging(cap), for: 4) }
+                }
             }
             return
         }
@@ -100,10 +125,16 @@ final class Devices: ObservableObject {
             var va = addr(kAudioHardwareServiceDeviceProperty_VirtualMainVolume, kAudioDevicePropertyScopeOutput)
             AudioObjectAddPropertyListenerBlock(id, &va, .main) { [weak self] _, _ in
                 guard let self, id == self.outputDevice else { return }
-                self.volume = self.readVolume(id)
+                self.volumeChanged()
+            }
+            var ma = addr(kAudioDevicePropertyMute, kAudioDevicePropertyScopeOutput)
+            AudioObjectAddPropertyListenerBlock(id, &ma, .main) { [weak self] _, _ in
+                guard let self, id == self.outputDevice else { return }
+                self.volumeChanged()
             }
         }
         volume = readVolume(id)
+        muted = readMute(id)
         var transport: UInt32 = 0; size = UInt32(MemoryLayout<UInt32>.size)
         var ta = addr(kAudioDevicePropertyTransportType)
         AudioObjectGetPropertyData(id, &ta, 0, nil, &size, &transport)
@@ -116,6 +147,65 @@ final class Devices: ObservableObject {
         } else {
             headphones = nil
         }
+    }
+
+    /// Le volume (ou la sourdine) vient de changer : pastille, ou mise à jour de celle du casque.
+    private func volumeChanged() {
+        let v = readVolume(outputDevice), m = readMute(outputDevice)
+        guard v != volume || m != muted else { return }
+        volume = v; muted = m
+        guard let v else { return }
+        if case .headphones(let h, _) = toast { toast = .headphones(h, volume: m ? 0 : v); show(toast!, for: 2.5); return }
+        guard Prefs.shared.showVolume else { return }
+        let sym = headphones.map { HeadphoneGlyph.symbol($0.name) }
+        show(.volume(v, muted: m, symbol: sym ?? Self.speakerSymbol(v, muted: m)), for: 1.8)
+    }
+
+    static func speakerSymbol(_ v: Float, muted: Bool) -> String {
+        if muted || v < 0.01 { return "speaker.slash.fill" }
+        return v < 0.34 ? "speaker.wave.1.fill" : v < 0.67 ? "speaker.wave.2.fill" : "speaker.wave.3.fill"
+    }
+
+    private func readMute(_ id: AudioDeviceID) -> Bool {
+        var v = UInt32(0); var size = UInt32(MemoryLayout<UInt32>.size)
+        var a = addr(kAudioDevicePropertyMute, kAudioDevicePropertyScopeOutput)
+        guard AudioObjectHasProperty(id, &a), AudioObjectGetPropertyData(id, &a, 0, nil, &size, &v) == noErr else { return false }
+        return v != 0
+    }
+
+    // MARK: Luminosité (écran intégré, framework privé DisplayServices)
+    private typealias GetBrightness = @convention(c) (CGDirectDisplayID, UnsafeMutablePointer<Float>) -> Int32
+    private static let getBrightness: GetBrightness? = {
+        guard let h = dlopen("/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices", RTLD_NOW),
+              let sym = dlsym(h, "DisplayServicesGetBrightness") else { return nil }
+        return unsafeBitCast(sym, to: GetBrightness.self)
+    }()
+
+    /// Aucune notification publique n'existe pour la luminosité : lecture 5 fois par seconde
+    /// (un appel C, coût négligeable). La pastille n'apparaît que juste après un appui sur
+    /// F1/F2 (sinon l'auto-luminosité en déclencherait sans arrêt).
+    static var accessibilityGranted: Bool { AXIsProcessTrusted() }
+
+    private func startBrightness() {
+        guard Self.getBrightness != nil else { return }
+        // Touches spéciales (évènements « system-defined », sous-type 8) : 2 = plus lumineux, 3 = moins.
+        keyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .systemDefined) { [weak self] e in
+            guard e.subtype.rawValue == 8 else { return }
+            let key = (e.data1 & 0xFFFF0000) >> 16
+            if key == 2 || key == 3 { self?.brightnessKeyUntil = Date.timeIntervalSinceReferenceDate + 1.2 }
+        }
+        brightnessTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in self?.pollBrightness() }
+        brightnessTimer?.tolerance = 0.05
+        pollBrightness()
+    }
+
+    private func pollBrightness() {
+        var b: Float = 0
+        guard let fn = Self.getBrightness, fn(CGMainDisplayID(), &b) == 0, (0...1).contains(b) else { return }
+        defer { lastBrightness = b }
+        guard lastBrightness >= 0, abs(b - lastBrightness) > 0.002,
+              Date.timeIntervalSinceReferenceDate < brightnessKeyUntil else { return }
+        if Prefs.shared.showBrightness { show(.brightness(b), for: 1.8) }
     }
 
     private func deviceName(_ id: AudioDeviceID) -> String? {

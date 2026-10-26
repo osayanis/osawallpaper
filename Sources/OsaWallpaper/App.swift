@@ -27,12 +27,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         screens = ScreenManager(music: music, devices: devices, prefs: prefs)
         screens.rebuild()
         buildStatusItem()
+        if !Demo.on { Updater.shared.startAutomaticChecks() }
+        if ProcessInfo.processInfo.environment["OSAWALLPAPER_UPDATE_TEST"] != nil {
+            // test de bout en bout : installe la dernière release sans demander
+            Updater.shared.check { r in if let r { Updater.shared.install(r) } else { NSLog("OsaWallpaper update test: rien de plus récent") } }
+        }
 
         if Demo.on {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 self.devices.show(.headphones(Headphones(name: "AirPods Pro", left: 82, right: 79, caseLevel: 60), volume: 0.62), for: 6)
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 9) { self.devices.show(.charging(64), for: 5) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 15) { self.devices.show(.volume(0.56, muted: false, symbol: "speaker.wave.2.fill"), for: 3) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 19) { self.devices.show(.brightness(0.72), for: 3) }
             if ProcessInfo.processInfo.environment["OSAWALLPAPER_ONBOARDING"] != nil { openOnboarding() }
         } else if ProcessInfo.processInfo.environment["OSAWALLPAPER_TOAST_TEST"] != nil {
             // test réel des pastilles (au-dessus de tout)
@@ -76,7 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: Fenêtres
     @objc func openSettings() {
         if settings == nil {
-            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: 600),
+            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: 680),
                              styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
             w.title = "Réglages d’OsaWallpaper"
             w.titlebarAppearsTransparent = true
@@ -116,6 +123,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func toggleArt() { prefs.artBackground.toggle() }
     @objc private func toggleWeather() { prefs.weatherInMenuBar.toggle() }
     @objc private func toggleLogin() { LoginItem.toggle() }
+    @objc private func checkUpdates() { Updater.shared.checkNow() }
+    @objc private func installUpdate() { if let r = Updater.shared.available { Updater.shared.install(r) } }
 }
 
 extension AppDelegate: NSMenuDelegate {
@@ -146,6 +155,11 @@ extension AppDelegate: NSMenuDelegate {
         item("Réglages…", #selector(openSettings), ",")
         item("Bienvenue…", #selector(openOnboarding))
         item("Ouvrir au démarrage du Mac", #selector(toggleLogin), on: LoginItem.enabled)
+        if let r = Updater.shared.available {
+            item("Installer la version \(r.version)…", #selector(installUpdate))
+        } else {
+            item("Rechercher des mises à jour…", #selector(checkUpdates))
+        }
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quitter OsaWallpaper", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     }
@@ -183,6 +197,18 @@ struct SettingsView: View {
             Section("Partout") {
                 Toggle("AirPods et casques (batterie, volume)", isOn: $prefs.showAirpods)
                 Toggle("Charge du Mac", isOn: $prefs.showCharging)
+                Toggle("Volume", isOn: $prefs.showVolume)
+                Toggle("Luminosité (touches F1 / F2)", isOn: $prefs.showBrightness)
+                if prefs.showBrightness && !Devices.accessibilityGranted {
+                    HStack {
+                        Text("macOS doit autoriser OsaWallpaper à voir les touches de luminosité (Accessibilité).")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Autoriser") {
+                            AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
+                        }
+                    }
+                }
                 Toggle("Météo dans la barre de menus", isOn: $prefs.weatherInMenuBar)
                 Toggle("Météo sur l’écran verrouillé", isOn: $prefs.showWeather)
             }
@@ -206,13 +232,20 @@ struct SettingsView: View {
                         devices.show(.headphones(devices.headphones ?? Headphones(name: "AirPods Pro", left: 82, right: 80, caseLevel: 64), volume: devices.volume ?? 0.6))
                     }
                     Button("Tester : charge") { devices.show(.charging(devices.battery?.percent ?? 82), for: 4) }
+                    Button("Tester : volume") { devices.show(.volume(devices.volume ?? 0.5, muted: false, symbol: "speaker.wave.2.fill"), for: 2) }
+                }
+                Toggle("Rechercher les mises à jour automatiquement", isOn: $prefs.autoUpdate)
+                HStack {
+                    Text("Version \(Updater.current)").foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Rechercher maintenant") { Updater.shared.checkNow() }
                 }
             } header: { Text("Général") } footer: {
                 Text("OsaWallpaper · OsaLabs").foregroundStyle(.tertiary)
             }
         }
         .formStyle(.grouped)
-        .frame(width: 460, height: 600)
+        .frame(width: 460, height: 680)
     }
 
     private func applyCity() {

@@ -23,6 +23,21 @@ extension View {
                 .overlay(shape.stroke(.white.opacity(0.14), lineWidth: 1))
         }
     }
+
+    /// Verre clair : on voit le fond à travers, avec un liseré de lumière en haut à gauche.
+    @ViewBuilder func clearGlass<S: InsettableShape>(_ shape: S, tint: Color) -> some View {
+        let rim = shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.55), .white.opacity(0.08), .white.opacity(0.22)],
+                                                    startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
+        let sheen = shape.fill(LinearGradient(colors: [.white.opacity(0.16), .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.55)))
+        if #available(macOS 26, *) {
+            self.background(sheen).glassEffect(.clear.tint(tint.opacity(0.18)), in: shape).overlay(rim)
+        } else {
+            self.background(sheen)
+                .background(tint.opacity(0.12).clipShape(shape))
+                .background(VisualEffect(material: .underWindowBackground).clipShape(shape).opacity(0.85))
+                .overlay(rim)
+        }
+    }
 }
 
 // MARK: - Écran verrouillé
@@ -84,28 +99,37 @@ struct LockBackdrop: View {
 
     var body: some View {
         ZStack {
-            Image(nsImage: image).resizable().aspectRatio(contentMode: .fill)
-                .frame(width: size.width, height: size.height).clipped()
-                .scaleEffect(1.15)
-            if palette.count == 9 { mesh.opacity(0.62) }
-            // lumière douce derrière la pochette
-            RadialGradient(colors: [.white.opacity(0.10), .clear], center: UnitPoint(x: 0.5, y: 0.5), startRadius: 0, endRadius: size.height * 0.5)
+            // 1) la pochette s'efface en premier…
+            ZStack {
+                Image(nsImage: image).resizable().aspectRatio(contentMode: .fill)
+                    .frame(width: size.width, height: size.height).clipped()
+                    .scaleEffect(1.15)
+                RadialGradient(colors: [.white.opacity(0.10), .clear], center: UnitPoint(x: 0.5, y: 0.5), startRadius: 0, endRadius: size.height * 0.5)
+            }
+            .mask(Self.fade(from: 0.5, to: 0.84))
+            // 2) …puis ses couleurs, plus bas : le passage vers ton fond d'écran se fait en douceur.
+            if palette.count == 9 { mesh.opacity(0.7).mask(Self.fade(from: 0.6, to: 0.99)) }
             Image(nsImage: Noise.image).resizable(resizingMode: .tile).opacity(0.05).blendMode(.overlay)
-            RadialGradient(colors: [.clear, .black.opacity(0.45)], center: .center, startRadius: size.height * 0.35, endRadius: size.width * 0.75)
-            LinearGradient(stops: [
-                .init(color: .black.opacity(0.30), location: 0),
-                .init(color: .clear, location: 0.32),
-                .init(color: .clear, location: 0.7),
-                .init(color: .black.opacity(0.25), location: 1),
-            ], startPoint: .top, endPoint: .bottom)
+                .mask(Self.fade(from: 0.6, to: 0.95))
+            RadialGradient(colors: [.clear, .black.opacity(0.4)], center: UnitPoint(x: 0.5, y: 0.4), startRadius: size.height * 0.35, endRadius: size.width * 0.75)
+                .mask(Self.fade(from: 0.55, to: 0.9))
+            LinearGradient(colors: [.black.opacity(0.3), .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.32))
         }
         .frame(width: size.width, height: size.height)
         .clipped()
-        .mask(LinearGradient(stops: [
-            .init(color: .black, location: 0),
-            .init(color: .black, location: 0.74),
-            .init(color: .clear, location: 0.93),
-        ], startPoint: .top, endPoint: .bottom))
+    }
+
+    /// Masque opaque → transparent avec une courbe douce (smoothstep) plutôt qu'une ligne droite :
+    /// pas de « marche » visible là où le fond s'arrête.
+    static func fade(from a: CGFloat, to b: CGFloat) -> LinearGradient {
+        let n = 14
+        var stops: [Gradient.Stop] = [.init(color: .black, location: 0)]
+        for i in 0...n {
+            let t = CGFloat(i) / CGFloat(n)
+            let e = t * t * (3 - 2 * t)
+            stops.append(.init(color: .black.opacity(1 - e), location: a + (b - a) * t))
+        }
+        return LinearGradient(stops: stops, startPoint: .top, endPoint: .bottom)
     }
 
     // Fixe : un dégradé animé coûtait 7 à 10 % de CPU en continu.
@@ -228,18 +252,16 @@ struct ClockView: View {
     var body: some View {
         TimelineView(.everyMinute) { tl in
             let t = Self.f.string(from: tl.date)
-            let text = Text(t).font(.system(size: size, weight: .semibold, design: .rounded)).kerning(-size * 0.02)
+            // SF Pro haute et serrée, comme l'heure de l'écran verrouillé de l'iPhone.
+            let text = Text(t).font(.system(size: size, weight: .semibold).width(.condensed)).kerning(-size * 0.01)
             ZStack {
-                // le flou de ce qu'il y a derrière, découpé en forme de chiffres
-                VisualEffect(material: .fullScreenUI).mask(text)
-                text.foregroundStyle(LinearGradient(colors: [.white.opacity(0.92), tint.opacity(0.75)], startPoint: .top, endPoint: .bottom))
-                    .opacity(0.62)
-                // reflet en haut des chiffres
-                text.foregroundStyle(LinearGradient(colors: [.white.opacity(0.9), .clear], startPoint: .top, endPoint: .center))
-                    .blendMode(.overlay)
+                text.foregroundStyle(LinearGradient(colors: [.white, .white.opacity(0.82)], startPoint: .top, endPoint: .bottom))
+                // une pointe de la couleur de la pochette dans le bas des chiffres
+                text.foregroundStyle(LinearGradient(colors: [.clear, tint.opacity(0.35)], startPoint: .center, endPoint: .bottom))
+                    .blendMode(.plusLighter)
             }
             .fixedSize()
-            .shadow(color: .black.opacity(0.22), radius: 24, y: 10)
+            .shadow(color: .black.opacity(0.18), radius: 18, y: 6)
             .contentTransition(.numericText())
             .animation(.spring(response: 0.6), value: t)
         }
@@ -301,7 +323,7 @@ struct MusicCard: View {
             ZStack {
                 VStack(spacing: 2) {
                     Text(m?.title ?? "").font(.system(size: 14, weight: .semibold)).lineLimit(1)
-                    Text(m?.artist ?? "").font(.system(size: 12, weight: .medium)).foregroundStyle(.white.opacity(0.65)).lineLimit(1)
+                    Text(m?.artist ?? "").font(.system(size: 12, weight: .medium)).foregroundStyle(.white.opacity(0.75)).lineLimit(1)
                 }
                 .padding(.horizontal, 36)
                 HStack {
@@ -318,15 +340,15 @@ struct MusicCard: View {
                     Text(Self.time(pos)).frame(width: 34, alignment: .leading)
                     GeometryReader { g in
                         ZStack(alignment: .leading) {
-                            Capsule().fill(.white.opacity(0.18))
-                            Capsule().fill(.white.opacity(0.85)).frame(width: g.size.width * min(1, pos / dur))
+                            Capsule().fill(.white.opacity(0.22))
+                            Capsule().fill(.white.opacity(0.92)).frame(width: g.size.width * min(1, pos / dur))
                         }
                     }
                     .frame(height: 4)
                     Text("-" + Self.time(max(0, dur - pos))).frame(width: 38, alignment: .trailing)
                 }
                 .font(.system(size: 10, weight: .semibold).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.6))
+                .foregroundStyle(.white.opacity(0.72))
             }
             HStack(spacing: 0) {
                 if m?.favorite != nil {
@@ -347,10 +369,10 @@ struct MusicCard: View {
                 .help("Sortie audio")
             }
         }
-        .padding(.horizontal, 18).padding(.top, 14).padding(.bottom, 10)
-        .frame(width: 340)
-        .glass(RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .shadow(color: .black.opacity(0.2), radius: 24, y: 10)
+        .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 10)
+        .frame(width: 360)
+        .clearGlass(RoundedRectangle(cornerRadius: 28, style: .continuous), tint: music.accent)
+        .shadow(color: .black.opacity(0.16), radius: 30, y: 14)
         .hitZone()
     }
 
@@ -438,12 +460,40 @@ struct ToastView: View {
                 Spacer(minLength: 6)
                 Text("\(p) %").font(.system(size: 12.5, weight: .semibold).monospacedDigit()).foregroundStyle(p >= 20 ? .green : .orange)
                 Ring(level: p)
+            case .volume(let v, let muted, let symbol):
+                Image(systemName: symbol).font(.system(size: 14, weight: .semibold)).frame(width: 22)
+                    .contentTransition(.symbolEffect(.replace))
+                Level(value: muted ? 0 : v)
+            case .brightness(let b):
+                Image(systemName: b < 0.5 ? "sun.min.fill" : "sun.max.fill").font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.yellow).frame(width: 22)
+                    .contentTransition(.symbolEffect(.replace))
+                Level(value: b)
             }
         }
         .padding(.leading, 14).padding(.trailing, 10)
         .frame(width: 236, height: 40)
         .background(Capsule().fill(.black))
         .shadow(color: .black.opacity(0.3), radius: 12, y: 5)
+    }
+}
+
+/// Barre de niveau des pastilles volume / luminosité (suit la valeur en direct).
+struct Level: View {
+    let value: Float
+    var body: some View {
+        HStack(spacing: 10) {
+            GeometryReader { g in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.white.opacity(0.2))
+                    Capsule().fill(.white).frame(width: max(6, g.size.width * CGFloat(min(1, max(0, value)))))
+                }
+            }
+            .frame(height: 5)
+            .animation(.spring(response: 0.25, dampingFraction: 0.85), value: value)
+            Text("\(Int((value * 100).rounded()))").font(.system(size: 12, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.7)).frame(width: 26, alignment: .trailing)
+        }
     }
 }
 

@@ -7,7 +7,7 @@
 ### Ton écran verrouillé prend les couleurs de ta musique.
 
 L’heure en verre, la pochette du morceau en cours, ses commandes et ses paroles, directement sur l’écran verrouillé de ton Mac.
-Et partout ailleurs, tes AirPods, ta charge et la météo, en un coup d’œil.
+Et partout ailleurs, tes AirPods, ta charge, le volume, la luminosité et la météo, en un coup d’œil.
 
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-111?logo=apple&logoColor=white)
 ![SwiftUI](https://img.shields.io/badge/SwiftUI-natif-0a84ff?logo=swift&logoColor=white)
@@ -28,10 +28,10 @@ Et partout ailleurs, tes AirPods, ta charge et la météo, en un coup d’œil.
 Quand ton Mac est verrouillé et qu’un morceau joue dans **Music** ou **Spotify** :
 
 - **La pochette devient le fond.** Floutée, mêlée à un dégradé de ses propres couleurs avec un grain léger, elle remplit l’écran et se fond vers le bas pour laisser visibles ta photo et le champ du mot de passe.
-- **L’heure, en verre.** Une grande horloge translucide teintée aux couleurs de la pochette, avec la date et la météo.
+- **L’heure, comme sur l’iPhone.** De grands chiffres hauts et serrés, une pointe de la couleur de la pochette, avec la date et la météo.
 - **La pochette en relief.** Elle s’incline doucement vers ta souris.
-- **Un lecteur en verre.** Titre, progression, favori, précédent / lecture / suivant, sortie audio.
-- **Les paroles synchronisées**, ligne par ligne.
+- **Un lecteur en verre clair.** Titre, progression, favori, précédent / lecture / suivant, sortie audio.
+- **Les paroles synchronisées**, ligne par ligne (base [LRCLIB](https://lrclib.net) : les titres très confidentiels n’y sont pas toujours).
 - **Sur tous tes écrans**, y compris les écrans externes.
 
 Dès que tu déverrouilles, tout disparaît : ton bureau reste exactement comme avant.
@@ -39,13 +39,15 @@ Dès que tu déverrouilles, tout disparaît : ton bureau reste exactement comme 
 ## ✨ Partout, tout le temps
 
 <p align="center">
-  <img src=".github/assets/toast.png" width="420" alt="Pastille AirPods">
+  <img src=".github/assets/toast.png" width="380" alt="Pastilles AirPods, charge, volume et luminosité">
 </p>
 
 | | |
 |---|---|
 | 🎧 **AirPods et casques** | Dès qu’un casque Bluetooth se connecte, une pastille apparaît en haut de l’écran avec sa batterie et le volume, au-dessus de toutes tes apps, même en plein écran. |
 | ⚡ **Charge** | Branche ton Mac : une pastille « En charge » s’affiche avec le pourcentage. |
+| 🔊 **Volume** | Une pastille discrète avec le niveau, l’icône de ton casque s’il est connecté. |
+| ☀️ **Luminosité** | Une pastille quand tu appuies sur F1 / F2 (autorisation Accessibilité facultative). |
 | 🌤️ **Météo** | La température et le ciel dans la barre de menus (Open-Meteo, sans clé ni compte). |
 
 ## 👋 Premier lancement
@@ -57,7 +59,7 @@ Dès que tu déverrouilles, tout disparaît : ton bureau reste exactement comme 
 Une fenêtre de bienvenue te guide en trois étapes :
 
 1. **Bienvenue** : ce que fait l’app.
-2. **Autorisation** : OsaWallpaper a seulement besoin de **piloter Music (ou Spotify)** pour lire le morceau en cours. Un clic sur « Autoriser » fait apparaître la demande de macOS. Tu peux aussi l’ouvrir au démarrage du Mac.
+2. **Autorisation** : OsaWallpaper a seulement besoin de **piloter Music (ou Spotify)** pour lire le morceau en cours. Un clic sur « Autoriser » fait apparaître la demande de macOS. Tu peux aussi l’ouvrir au démarrage du Mac, et autoriser (facultatif) l’accès Accessibilité pour la pastille de luminosité.
 3. **C’est prêt** : un bouton d’aperçu pour voir le résultat sans verrouiller.
 
 Pas de caméra, pas de micro, pas de localisation : la météo utilise une position approximative déduite de ta connexion, ou la ville de ton choix.
@@ -69,6 +71,10 @@ Pas de caméra, pas de micro, pas de localisation : la météo utilise une posit
 3. Suis la fenêtre de bienvenue, lance un morceau, puis verrouille ton Mac avec <kbd>⌃</kbd> <kbd>⌘</kbd> <kbd>Q</kbd>.
 
 L’icône dans la barre de menus donne accès aux réglages, à l’aperçu et à l’ouverture au démarrage.
+
+### 🔄 Mises à jour
+
+OsaWallpaper regarde les [Releases](../../releases) de ce dépôt au lancement puis toutes les 12 h. Quand une nouvelle version sort, il propose de l’installer : il la télécharge, vérifie qu’elle est signée par le même développeur, remplace l’app et se relance. Désactivable dans les réglages, ou à la demande via « Rechercher des mises à jour… ».
 
 ## 🛠️ Compiler
 
@@ -98,7 +104,10 @@ OSAWALLPAPER_DEMO=/chemin/vers/une/image.jpg ./OsaWallpaper.app/Contents/MacOS/O
 | Pochette | Celle du fichier dans Music, sinon recherche iTunes. Le flou est calculé une seule fois par morceau avec Core Image. |
 | Paroles | [LRCLIB](https://lrclib.net). L’app ne se réveille qu’au début de chaque ligne. |
 | AirPods | Sortie audio par défaut surveillée via CoreAudio, sans permission Bluetooth. Batterie lue dans `system_profiler`. |
-| Charge | Notifications IOKit (`IOPSNotificationCreateRunLoopSource`). |
+| Charge | Notifications IOKit (`IOPSNotificationCreateRunLoopSource`) + `notify`. |
+| Volume | Écouteur CoreAudio sur le volume et la sourdine de la sortie par défaut. |
+| Luminosité | `DisplayServicesGetBrightness` (framework privé) lu 5 fois par seconde, pastille seulement après F1 / F2. |
+| Mises à jour | API GitHub Releases, archive `OsaWallpaper.zip`, signature vérifiée avec `SecStaticCode`. |
 | Météo | [Open-Meteo](https://open-meteo.com), position par IP ou ville choisie. |
 
 **Sobriété** : environ 0,2 % de CPU quand rien ne joue, ~20 à 30 Mo de RAM.
