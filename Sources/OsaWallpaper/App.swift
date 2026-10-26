@@ -34,6 +34,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 9) { self.devices.show(.charging(64), for: 5) }
             if ProcessInfo.processInfo.environment["OSAWALLPAPER_ONBOARDING"] != nil { openOnboarding() }
+        } else if ProcessInfo.processInfo.environment["OSAWALLPAPER_TOAST_TEST"] != nil {
+            // test réel des pastilles (au-dessus de tout)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                self.devices.show(.headphones(Headphones(name: "AirPods Pro", left: 82, right: 79, caseLevel: 60), volume: 0.62), for: 4)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 7) { self.devices.show(.charging(64), for: 4) }
         } else if !prefs.onboarded {
             openOnboarding()
         }

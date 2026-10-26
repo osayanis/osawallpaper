@@ -17,6 +17,13 @@ final class HitStore { var rects: [CGRect] = [] }
 /// Position du curseur relative à l'écran (0…1), pour l'effet de relief de la pochette.
 final class CursorModel: ObservableObject { @Published var p = CGPoint(x: 0.5, y: 0.5) }
 
+/// Écran sur lequel afficher la prochaine notification (celui de la souris).
+final class ToastTarget: ObservableObject { @Published var display: CGDirectDisplayID = 0 }
+
+extension NSScreen {
+    var displayID: CGDirectDisplayID { (deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0 }
+}
+
 /// État partagé : verrouillé ou non, aperçu demandé.
 final class LockState: ObservableObject {
     @Published var locked = false
@@ -110,7 +117,10 @@ final class ScreenManager {
     let lock = LockState()
     private let music: MusicWatcher, devices: Devices, prefs: Prefs
     private var windows: [LockWindow] = []
-    private var toastPanel: OverlayPanel?
+    // Une fenêtre de notification FIXE par écran : une fenêtre confiée à SkyLight
+    // ne doit plus jamais être déplacée ni redimensionnée (elle se place mal ensuite).
+    private var toastPanels: [OverlayPanel] = []
+    private let toastTarget = ToastTarget()
     private var timer: Timer?
     private var bag = Set<AnyCancellable>()
     private var lastMouse = NSPoint(x: -1, y: -1)
@@ -128,7 +138,7 @@ final class ScreenManager {
         lock.locked = Self.sessionLocked()
 
         prefs.$allScreens.dropFirst().sink { [weak self] _ in DispatchQueue.main.async { self?.rebuild() } }.store(in: &bag)
-        devices.$toast.sink { [weak self] t in if t != nil { DispatchQueue.main.async { self?.placeToast() } } }.store(in: &bag)
+        devices.$toast.sink { [weak self] t in if t != nil { self?.aimToast() } }.store(in: &bag)
     }
 
     static func sessionLocked() -> Bool {
@@ -155,12 +165,16 @@ final class ScreenManager {
         let main = NSScreen.screens.first
         let screens = prefs.allScreens ? NSScreen.screens : [main].compactMap { $0 }
         windows = screens.map { LockWindow(screen: $0, music: music, devices: devices, prefs: prefs, lock: lock) }
-        if toastPanel == nil {
-            let p = OverlayPanel(frame: NSRect(x: 0, y: 0, width: 420, height: 110))
-            p.contentView = NSHostingView(rootView: ToastHost(devices: devices).frame(width: 420, height: 110))
-            toastPanel = p
+        toastPanels.forEach { $0.orderOut(nil); $0.close() }
+        toastPanels = NSScreen.screens.map { sc in
+            let top = max(sc.frame.maxY - sc.visibleFrame.maxY, sc.safeAreaInsets.top)
+            let w: CGFloat = 340, h: CGFloat = 84
+            let p = OverlayPanel(frame: NSRect(x: sc.frame.midX - w / 2, y: sc.frame.maxY - top - h, width: w, height: h))
+            p.contentView = NSHostingView(rootView: ToastHost(devices: devices, target: toastTarget, display: sc.displayID).frame(width: w, height: h))
+            p.lift()
+            return p
         }
-        placeToast()
+        aimToast()
         if timer == nil {
             timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20, repeats: true) { [weak self] _ in self?.tick() }
         }
@@ -168,13 +182,10 @@ final class ScreenManager {
     }
 
     /// La notification apparaît en haut de l'écran où se trouve la souris.
-    private func placeToast() {
-        guard let p = toastPanel else { return }
+    private func aimToast() {
         let m = NSEvent.mouseLocation
-        guard let s = NSScreen.screens.first(where: { $0.frame.contains(m) }) ?? NSScreen.main else { return }
-        let top = max(s.frame.maxY - s.visibleFrame.maxY, s.safeAreaInsets.top)
-        p.setFrame(NSRect(x: s.frame.midX - 210, y: s.frame.maxY - top - 110 - 2, width: 420, height: 110), display: true)
-        p.lift()
+        let sc = NSScreen.screens.first(where: { $0.frame.contains(m) }) ?? NSScreen.main
+        toastTarget.display = sc?.displayID ?? 0
     }
 
     private func tick() {

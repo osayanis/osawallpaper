@@ -27,7 +27,7 @@ Et partout ailleurs, tes AirPods, ta charge et la météo, en un coup d’œil.
 
 Quand ton Mac est verrouillé et qu’un morceau joue dans **Music** ou **Spotify** :
 
-- **La pochette devient le fond.** Floutée, elle remplit l’écran et se fond vers le bas pour laisser visibles ta photo et le champ du mot de passe.
+- **La pochette devient le fond.** Floutée, mêlée à un dégradé de ses propres couleurs avec un grain léger, elle remplit l’écran et se fond vers le bas pour laisser visibles ta photo et le champ du mot de passe.
 - **L’heure, en verre.** Une grande horloge translucide teintée aux couleurs de la pochette, avec la date et la météo.
 - **La pochette en relief.** Elle s’incline doucement vers ta souris.
 - **Un lecteur en verre.** Titre, progression, favori, précédent / lecture / suivant, sortie audio.
