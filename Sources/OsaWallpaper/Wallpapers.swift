@@ -121,6 +121,24 @@ final class WallpaperStore: ObservableObject {
 
     func clear() { setCurrent(nil) }
 
+    /// Les photos choisies avant que leur nom soit connu le reçoivent ici.
+    func applyNames(_ names: [String: PhotoName]) {
+        func fix(_ w: Wallpaper) -> Wallpaper {
+            guard w.id.hasPrefix("wh-"), let n = names[String(w.id.dropFirst(3))], n.title != w.title else { return w }
+            var r = w; r.title = n.title; r.subtitle = n.credit ?? w.subtitle
+            return r
+        }
+        let h = history.map(fix), c = current.map(fix)
+        guard h != history || c != current else { return }
+        history = h; current = c
+        save()
+    }
+
+    /// Identifiants Wallhaven des fonds sans nom (à demander).
+    var unnamedPhotos: [String] {
+        history.filter { $0.id.hasPrefix("wh-") && $0.title.hasPrefix("Photo") }.map { String($0.id.dropFirst(3)) }
+    }
+
     func remove(_ w: Wallpaper) {
         if current?.id == w.id { setCurrent(nil, save: false) }
         history.removeAll { $0.id == w.id }
@@ -210,10 +228,11 @@ enum Wallhaven {
         let thumbs: Thumbs
         struct Thumbs: Decodable { let large: String, original: String, small: String }
         var width: Int { Int(resolution.split(separator: "x").first ?? "") ?? 0 }
-        var wallpaper: Wallpaper {
-            Wallpaper(id: "wh-" + id, kind: .image, title: "Photo " + resolution.replacingOccurrences(of: "x", with: " × "),
-                      subtitle: "Wallhaven · " + ByteCountFormatter.string(fromByteCount: Int64(file_size), countStyle: .file),
-                      thumb: URL(string: thumbs.large), remote: URL(string: path), badge: width >= 3840 ? "4K" : width >= 2560 ? "QHD" : nil)
+        func wallpaper(_ n: PhotoName?) -> Wallpaper {
+            let size = ByteCountFormatter.string(fromByteCount: Int64(file_size), countStyle: .file)
+            return Wallpaper(id: "wh-" + id, kind: .image, title: n?.title ?? "Photo",
+                             subtitle: n?.credit ?? "Wallhaven · " + resolution.replacingOccurrences(of: "x", with: " × ") + " · " + size,
+                             thumb: URL(string: thumbs.large), remote: URL(string: path), badge: width >= 3840 ? "4K" : width >= 2560 ? "QHD" : nil)
         }
     }
     struct Page: Decodable { let data: [Item]; let meta: Meta; struct Meta: Decodable { let current_page: Int; let last_page: Int } }
