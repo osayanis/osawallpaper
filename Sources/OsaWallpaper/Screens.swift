@@ -192,7 +192,7 @@ final class ScreenManager {
         let m = NSEvent.mouseLocation
         if m == lastMouse { return }
         lastMouse = m
-        let active = lock.visible && prefs.lockScreen && music.music != nil
+        let active = lock.visible && prefs.lockScreen && (music.music != nil || WallpaperStore.shared.current != nil)
         windows.forEach { $0.track(m, active: active) }
     }
 }

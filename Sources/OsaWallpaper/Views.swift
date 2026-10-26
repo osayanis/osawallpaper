@@ -48,20 +48,29 @@ struct LockView: View {
     @ObservedObject var devices: Devices
     @ObservedObject var prefs: Prefs
     @ObservedObject var lock: LockState
+    @ObservedObject var wall = WallpaperStore.shared
     let cursor: CursorModel
     let size: CGSize
     let topInset: CGFloat
 
     var body: some View {
         let h = size.height
-        let show = (lock.visible || Demo.on) && prefs.lockScreen && music.music != nil
+        let playing = music.music != nil
+        let show = (lock.visible || Demo.on) && prefs.lockScreen && (playing || wall.current != nil)
         // Pochette animée de l'artiste (Apple Music) : elle devient tout le fond, comme sur l'iPhone.
-        let moving = prefs.motionArt && music.motion != nil && music.motionPlayer.player != nil
-        let full = moving || (prefs.artBackground && music.backdrop != nil)
+        let motion = playing && prefs.motionArt && music.motion != nil && music.motionPlayer.player != nil
+        let musicFull = motion || (playing && prefs.artBackground && music.backdrop != nil)
+        // Ton fond à toi : sans musique, ou toujours si tu l'as choisi.
+        let custom = wall.current != nil && (!playing || prefs.wallpaperOverMusic || !musicFull)
+        let moving = motion && !custom
+        let full = custom || musicFull
         let art = min(h * 0.33, size.width * 0.3, 400)
+        let video = show && custom && wall.current?.kind == .video
         ZStack(alignment: .top) {
             if show {
-                if moving, let p = music.motionPlayer.player {
+                if custom {
+                    CustomBackdrop(store: wall, size: size).id(wall.current?.id).transition(.opacity)
+                } else if moving, let p = music.motionPlayer.player {
                     MotionBackdrop(player: p, size: size).transition(.opacity)
                 } else if full, let b = music.backdrop {
                     LockBackdrop(image: b, palette: music.palette, size: size)
@@ -72,19 +81,23 @@ struct LockView: View {
                         // Le fond recouvre l'horloge de macOS : on affiche la nôtre, en verre.
                         Spacer().frame(height: topInset + h * 0.035)
                         InfoRow(devices: devices, prefs: prefs)
-                        ClockView(size: h * 0.13, tint: music.accent).padding(.top, -h * 0.006)
+                        ClockView(size: h * 0.13, tint: playing ? music.accent : .white).padding(.top, -h * 0.006)
                         Spacer().frame(height: h * 0.02)
                     } else {
                         Spacer().frame(height: h * 0.27)   // l'horloge de macOS reste visible au-dessus
                     }
-                    if moving {
-                        Spacer()                      // la vidéo occupe le milieu de l'écran
-                    } else if let m = music.music {
-                        ArtworkView(music: music, cursor: cursor, side: art, playing: m.playing)
+                    if playing {
+                        if moving || custom {
+                            Spacer()                      // le fond occupe le milieu de l'écran
+                        } else if let m = music.music {
+                            ArtworkView(music: music, cursor: cursor, side: art, playing: m.playing)
+                        }
+                        if prefs.showLyrics { LyricView(music: music).padding(.top, h * 0.022) }
+                        MusicCard(music: music, devices: devices).padding(.top, h * (prefs.showLyrics ? 0.018 : 0.05))
+                        if moving || custom { Spacer().frame(height: h * 0.2) } else { Spacer() }
+                    } else {
+                        Spacer()
                     }
-                    if prefs.showLyrics { LyricView(music: music).padding(.top, h * 0.022) }
-                    MusicCard(music: music, devices: devices).padding(.top, h * (prefs.showLyrics ? 0.018 : 0.05))
-                    if moving { Spacer().frame(height: h * 0.2) } else { Spacer() }
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.97)))
             }
@@ -94,8 +107,41 @@ struct LockView: View {
         .animation(.easeInOut(duration: 0.5), value: show)
         .animation(.easeInOut(duration: 0.6), value: full)
         .animation(.easeInOut(duration: 0.8), value: moving)
-        .onAppear { music.motionPlayer.setVisible(show && moving) }
+        .animation(.easeInOut(duration: 0.6), value: wall.current?.id)
+        .onAppear { music.motionPlayer.setVisible(show && moving); wall.player.setVisible(video) }
         .onChange(of: show && moving) { _, v in music.motionPlayer.setVisible(v) }
+        .onChange(of: video) { _, v in wall.player.setVisible(v) }
+        .onChange(of: wall.current?.id) { wall.player.setVisible(video) }
+    }
+}
+
+/// Ton fond d'écran (photo, vidéo ou YouTube), avec le même fondu en bas que la pochette :
+/// le champ du mot de passe de macOS reste visible.
+struct CustomBackdrop: View {
+    @ObservedObject var store: WallpaperStore
+    let size: CGSize
+    var body: some View {
+        ZStack {
+            Group {
+                switch store.current?.kind {
+                case .image:
+                    if let i = store.image { Image(nsImage: i).resizable().aspectRatio(contentMode: .fill) }
+                case .video:
+                    if let p = store.player.player { MotionView(player: p) }
+                case .youtube:
+                    if let id = store.current?.youtubeID { YouTubeView(id: id) }
+                case nil:
+                    Color.clear
+                }
+            }
+            .frame(width: size.width, height: size.height)
+            .clipped()
+            .mask(LockBackdrop.fade(from: 0.72, to: 0.98))
+            LinearGradient(colors: [.black.opacity(0.32), .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.34))
+        }
+        .frame(width: size.width, height: size.height)
+        .clipped()
+        .allowsHitTesting(false)
     }
 }
 

@@ -34,6 +34,7 @@ final class MusicWatcher: ObservableObject {
 
     /// Mode démo (tests visuels) : un faux morceau, sans toucher aux apps de musique.
     private func startDemo(artPath: String) {
+        if artPath == "nomusic" { return }     // OSAWALLPAPER_DEMO=nomusic : écran verrouillé sans morceau
         music = MusicInfo(playing: true, title: "Nuit d’été", artist: "Les Osa", album: "Démo", source: "Music",
                           position: 61, duration: 168, favorite: false)
         sampledAt = Date()
