@@ -25,87 +25,89 @@ extension View {
     }
 }
 
-// MARK: - Fond (fenêtre au niveau du bureau)
+// MARK: - Écran verrouillé
 
-struct BackgroundView: View {
-    @ObservedObject var music: MusicWatcher
-    @ObservedObject var prefs: Prefs
-
-    var body: some View {
-        ZStack {
-            if prefs.artBackground, let b = music.backdrop {
-                ZStack {
-                    Image(nsImage: b).resizable().aspectRatio(contentMode: .fill)
-                    // Profondeur : plus sombre en haut (horloge lisible) et en bas.
-                    LinearGradient(stops: [
-                        .init(color: .black.opacity(0.38), location: 0),
-                        .init(color: .black.opacity(0.05), location: 0.38),
-                        .init(color: .black.opacity(0.05), location: 0.62),
-                        .init(color: .black.opacity(0.45), location: 1),
-                    ], startPoint: .top, endPoint: .bottom)
-                }
-                .id(ObjectIdentifier(b))
-                .transition(.opacity)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .clipped()
-        .animation(.easeInOut(duration: 1.0), value: prefs.artBackground)
-    }
-}
-
-// MARK: - Widgets (au-dessus des icônes du bureau)
-
-struct WidgetsView: View {
+struct LockView: View {
     @ObservedObject var music: MusicWatcher
     @ObservedObject var devices: Devices
     @ObservedObject var prefs: Prefs
+    @ObservedObject var lock: LockState
     let cursor: CursorModel
     let size: CGSize
-    let insets: EdgeInsets
-    let isMain: Bool
+    let topInset: CGFloat
 
     var body: some View {
         let h = size.height
-        let art = min(h * 0.32, size.width * 0.3, 380)
+        let show = (lock.visible || Demo.on) && prefs.lockScreen && music.music != nil
+        let full = prefs.artBackground && music.backdrop != nil
+        let art = min(h * 0.25, size.width * 0.26, 300)
         ZStack(alignment: .top) {
-            if !prefs.hideWidgets {
-                VStack(spacing: 0) {
-                    Spacer().frame(height: insets.top + h * 0.05)
-                    InfoRow(devices: devices, prefs: prefs)
-                        .opacity(isMain && devices.toast != nil ? 0 : 1)
-                        .blur(radius: isMain && devices.toast != nil ? 6 : 0)
-                        .animation(.easeInOut(duration: 0.3), value: devices.toast != nil)
-                    ClockView(size: h * 0.16, tint: music.music != nil && prefs.artBackground ? music.accent : .white)
-                        .padding(.top, -h * 0.008)
-                    if let m = music.music {
-                        Spacer(minLength: 12)
-                        ArtworkView(music: music, cursor: cursor, side: art, playing: m.playing)
-                        MusicCard(music: music, devices: devices).padding(.top, h * 0.035)
-                        if prefs.showLyrics { LyricView(music: music).padding(.top, 14) }
-                        Spacer(minLength: insets.bottom + 30)
-                    } else {
-                        Spacer()
-                    }
+            if show {
+                if full, let b = music.backdrop {
+                    backdrop(b).id(ObjectIdentifier(b)).transition(.opacity)
                 }
-                .transition(.opacity)
+                VStack(spacing: 0) {
+                    if full {
+                        // Le fond recouvre l'horloge de macOS : on affiche la nôtre, en verre.
+                        Spacer().frame(height: topInset + h * 0.045)
+                        InfoRow(devices: devices, prefs: prefs)
+                        ClockView(size: h * 0.15, tint: music.accent).padding(.top, -h * 0.006)
+                        Spacer().frame(height: h * 0.025)
+                    } else {
+                        Spacer().frame(height: h * 0.30)   // l'horloge de macOS reste visible au-dessus
+                    }
+                    if let m = music.music {
+                        ArtworkView(music: music, cursor: cursor, side: art, playing: m.playing)
+                    }
+                    MusicCard(music: music, devices: devices).padding(.top, h * 0.03)
+                    if prefs.showLyrics { LyricView(music: music).padding(.top, 12) }
+                    Spacer()
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.97)))
             }
-
-            if isMain, let t = devices.toast {
-                ToastView(toast: t)
-                    .padding(.top, insets.top + size.height * 0.05 - 18)
-                    .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .opacity).combined(with: .scale(scale: 0.8, anchor: .top)),
-                                            removal: .opacity.combined(with: .scale(scale: 0.9, anchor: .top))))
-                    .zIndex(2)
-            }
-
-            HStack { SideIcons(prefs: prefs, music: music); Spacer() }
-                .padding(.top, insets.top + 18).padding(.leading, 22)
         }
         .frame(width: size.width, height: size.height)
         .foregroundStyle(.white)
-        .animation(.spring(response: 0.55, dampingFraction: 0.85), value: music.music != nil)
-        .animation(.easeInOut(duration: 0.35), value: prefs.hideWidgets)
+        .animation(.easeInOut(duration: 0.5), value: show)
+        .animation(.easeInOut(duration: 0.6), value: full)
+    }
+
+    /// Pochette floutée en plein écran ; le bas redevient transparent pour laisser
+    /// voir la photo de session et le champ du mot de passe de macOS.
+    private func backdrop(_ b: NSImage) -> some View {
+        ZStack {
+            Image(nsImage: b).resizable().aspectRatio(contentMode: .fill)
+                .frame(width: size.width, height: size.height).clipped()
+            LinearGradient(stops: [
+                .init(color: .black.opacity(0.35), location: 0),
+                .init(color: .black.opacity(0.05), location: 0.4),
+                .init(color: .black.opacity(0.15), location: 0.75),
+            ], startPoint: .top, endPoint: .bottom)
+        }
+        .mask(LinearGradient(stops: [
+            .init(color: .black, location: 0),
+            .init(color: .black, location: 0.66),
+            .init(color: .clear, location: 0.86),
+        ], startPoint: .top, endPoint: .bottom))
+    }
+}
+
+// MARK: - Notification (partout, au-dessus de tout)
+
+struct ToastHost: View {
+    @ObservedObject var devices: Devices
+    var body: some View {
+        ZStack(alignment: .top) {
+            if let t = devices.toast {
+                ToastView(toast: t)
+                    .padding(.top, 8)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .top).combined(with: .opacity).combined(with: .scale(scale: 0.7, anchor: .top)),
+                        removal: .opacity.combined(with: .scale(scale: 0.9, anchor: .top))))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .foregroundStyle(.white)
     }
 }
 
@@ -416,57 +418,5 @@ struct Ring: View {
         .frame(width: 26, height: 26)
         .help("\(level) %")
         .onAppear { withAnimation(.easeOut(duration: 0.9).delay(0.15)) { shown = true } }
-    }
-}
-
-// MARK: Icônes discrètes à gauche (réglages, fond, masquer)
-
-struct SideIcons: View {
-    @ObservedObject var prefs: Prefs
-    @ObservedObject var music: MusicWatcher
-
-    var body: some View {
-        VStack(spacing: 10) {
-            if !prefs.hideWidgets {
-                SideIcon(symbol: "gearshape.fill", label: "Réglages") { AppDelegate.shared?.openSettings() }
-                SideIcon(symbol: prefs.artBackground ? "photo.fill" : "photo", label: prefs.artBackground ? "Fond : pochette" : "Fond : le tien") {
-                    prefs.artBackground.toggle()
-                }
-            }
-            SideIcon(symbol: prefs.hideWidgets ? "eye.slash.fill" : "eye.fill", label: prefs.hideWidgets ? "Afficher les widgets" : "Masquer les widgets") {
-                prefs.hideWidgets.toggle()
-            }
-        }
-    }
-}
-
-struct SideIcon: View {
-    let symbol: String
-    let label: String
-    let action: () -> Void
-    @State private var hover = false
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Button(action: action) {
-                Image(systemName: symbol)
-                    .font(.system(size: 12, weight: .semibold))
-                    .contentTransition(.symbolEffect(.replace))
-                    .frame(width: 30, height: 30)
-                    .glass(Circle())
-                    .opacity(hover ? 1 : 0.55)
-                    .contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .onHover { hover = $0 }
-            .hitZone()
-            if hover {
-                Text(label).font(.system(size: 12, weight: .semibold))
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(Capsule().fill(.black.opacity(0.6)))
-                    .transition(.opacity.combined(with: .move(edge: .leading)))
-            }
-        }
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: hover)
     }
 }
