@@ -51,6 +51,8 @@ Menu OsaWallpaper → **Choisir un fond d’écran…** (⌘F) ouvre une galerie
 - **Ton lien** : colle une vidéo **YouTube** (lue en direct par le lecteur officiel, en sourdine) ou un lien direct **.mp4 / .mov / .jpg / .png**. Tu peux aussi glisser un fichier depuis ton Mac.
 - **Mes fonds** : les 40 derniers fonds utilisés, pour revenir à l’un d’eux en un clic.
 
+**Aussi sur le bureau** (dans la galerie, le menu ou les réglages) : le même fond devient celui de ton Mac déverrouillé. Pour une vidéo, tu choisis **Animé** (elle tourne en boucle derrière tes fenêtres, en pause dès que le Mac est verrouillé, en veille ou en économie d’énergie) ou **Image fixe** (une image tirée de la vidéo, zéro CPU). Ton fond d’origine est remis quand tu coupes l’option.
+
 Sans musique, l’écran verrouillé montre ton fond avec l’heure et la météo. Quand un morceau joue, tu choisis ce qui s’affiche : la pochette de l’album ou ton fond, avec le lecteur par-dessus.
 
 <div align="center">
@@ -132,7 +134,7 @@ OSAWALLPAPER_DEMO=/chemin/vers/une/image.jpg ./OsaWallpaper.app/Contents/MacOS/O
 | Luminosité | `DisplayServicesGetBrightness` (framework privé) lu 5 fois par seconde, pastille seulement après F1 / F2. |
 | Pochettes animées | Page de l’album sur music.apple.com (JSON `serialized-server-data`, vidéo `motionDetailSquare`), qualité 1080p HEVC téléchargée une fois, lue en boucle avec `AVPlayerLooper` seulement quand l’écran est verrouillé. Méthode non officielle. |
 | Indicateurs natifs | Interception des touches spéciales (`CGEventTap`), son réglé via CoreAudio, luminosité via `DisplayServicesSetBrightness`. |
-| Fonds personnalisés | Photos : API publique de Wallhaven. Vidéos Apple : catalogue public `resources-16.tar` (noms en français), vidéo téléchargée une fois. Fichiers et liens copiés dans `~/Library/Application Support/OsaWallpaper`. Vidéos lues avec `AVPlayerLooper`, seulement quand l’écran est verrouillé. |
+| Fonds personnalisés | Photos : API publique de Wallhaven. Vidéos Apple : catalogue public `resources-16.tar` (noms en français), vidéo téléchargée une fois. Fichiers et liens copiés dans `~/Library/Application Support/OsaWallpaper`. Vidéos lues avec `AVPlayerLooper`, seulement quand on peut les voir. Bureau : `NSWorkspace.setDesktopImageURL` + une fenêtre au niveau du bureau pour la vidéo. |
 | YouTube | Lecteur intégré officiel (`youtube-nocookie.com`) dans une `WKWebView`, en sourdine et en boucle, créée seulement quand l’écran verrouillé est visible. Rien n’est téléchargé. |
 | Mises à jour | API GitHub Releases, archive `OsaWallpaper.zip`, signature vérifiée avec `SecStaticCode`. |
 | Météo | [Open-Meteo](https://open-meteo.com), position par IP ou ville choisie. |

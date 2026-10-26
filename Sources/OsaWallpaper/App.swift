@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settings: NSWindow?
     private var onboarding: NSWindow?
     private var gallery: NSWindow?
+    private var desktop: DesktopWallpaper?
     private var bag = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ n: Notification) {
@@ -27,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         devices.start()
         screens = ScreenManager(music: music, devices: devices, prefs: prefs)
         screens.rebuild()
+        desktop = DesktopWallpaper(store: WallpaperStore.shared, prefs: prefs, lock: screens.lock)
         buildStatusItem()
         if !Demo.on { Updater.shared.startAutomaticChecks() }
         if ProcessInfo.processInfo.environment["OSAWALLPAPER_UPDATE_TEST"] != nil {
@@ -154,6 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func preview() { screens.showPreview() }
     @objc private func toggleLock() { prefs.lockScreen.toggle() }
     @objc private func toggleArt() { prefs.artBackground.toggle() }
+    @objc private func toggleDesktop() { prefs.desktopToo.toggle() }
     @objc private func toggleWeather() { prefs.weatherInMenuBar.toggle() }
     @objc private func toggleLogin() { LoginItem.toggle() }
     @objc private func checkUpdates() { Updater.shared.checkNow() }
@@ -184,6 +187,7 @@ extension AppDelegate: NSMenuDelegate {
         item("Fond tiré de la pochette", #selector(toggleArt), on: prefs.artBackground)
         item("Météo dans la barre de menus", #selector(toggleWeather), on: prefs.weatherInMenuBar)
         item("Choisir un fond d’écran…", #selector(openGallery), "f")
+        item("Aussi sur le bureau", #selector(toggleDesktop), on: prefs.desktopToo, enabled: WallpaperStore.shared.current != nil)
         let canPreview = music.music != nil || WallpaperStore.shared.current != nil
         item(canPreview ? "Aperçu de l’écran verrouillé" : "Aperçu (lance un morceau)", #selector(preview), enabled: canPreview)
         menu.addItem(.separator())
@@ -242,7 +246,13 @@ struct SettingsView: View {
                     Spacer()
                     Button("Choisir…") { AppDelegate.shared?.openGallery() }
                 }
-                if wall.current != nil { Toggle("Garder mon fond même pendant la musique", isOn: $prefs.wallpaperOverMusic) }
+                if wall.current != nil {
+                    Toggle("Garder mon fond même pendant la musique", isOn: $prefs.wallpaperOverMusic)
+                    Toggle("Aussi en fond du bureau (Mac déverrouillé)", isOn: $prefs.desktopToo)
+                    if prefs.desktopToo, let k = wall.current?.kind, k != .image {
+                        Toggle("Vidéo animée sur le bureau", isOn: $prefs.desktopAnimated)
+                    }
+                }
                 Toggle("Fond tiré de la pochette", isOn: $prefs.artBackground)
                 Toggle("Pochettes animées d’Apple Music (quand l’artiste en a une)", isOn: $prefs.motionArt)
                 Toggle("Paroles synchronisées", isOn: $prefs.showLyrics)
