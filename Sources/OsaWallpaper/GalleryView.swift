@@ -25,7 +25,7 @@ final class GalleryModel: ObservableObject {
 
     // Photos (Wallhaven)
     @Published var topic = 0
-    @Published var query = ""
+    @Published var query = ProcessInfo.processInfo.environment["OSAWALLPAPER_QUERY"] ?? ""
     @Published private(set) var photos: [Wallhaven.Item] = []
     @Published private(set) var loadingPhotos = false
     @Published private(set) var photoError: String?
@@ -38,7 +38,7 @@ final class GalleryModel: ObservableObject {
 
     private var searchQuery: String {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        return q.isEmpty ? Wallhaven.topics[topic].q : q
+        return q.isEmpty ? Wallhaven.topics[topic].q : PhotoNames.english(q)
     }
 
     func loadPhotos(reset: Bool) {
@@ -46,9 +46,15 @@ final class GalleryModel: ObservableObject {
         guard !loadingPhotos, page < lastPage else { return }
         loadingPhotos = true
         let g = gen, next = page + 1, q = searchQuery
+        let typed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         Task {
             do {
-                let r = try await Wallhaven.search(q, page: next)
+                var r = try await Wallhaven.search(q, page: next)
+                // Rien trouvé avec un mot inconnu ? On réessaie avec les seuls mots compris.
+                if r.data.isEmpty, next == 1, !typed.isEmpty {
+                    let k = PhotoNames.english(typed, knownOnly: true)
+                    if !k.isEmpty, k != q { r = try await Wallhaven.search(k, page: next) }
+                }
                 guard g == gen else { return }
                 page = next; lastPage = r.meta.last_page
                 let seen = Set(photos.map(\.id))
@@ -74,10 +80,18 @@ struct GalleryView: View {
     @StateObject private var model = GalleryModel()
     @ObservedObject var store: WallpaperStore
     @ObservedObject var prefs: Prefs
+    @ObservedObject private var names = PhotoNames.shared
     var onPreview: () -> Void
     @Namespace private var tabNS
 
-    private var shown: Wallpaper? { model.selected ?? store.current }
+    private var shown: Wallpaper? { (model.selected ?? store.current).map(named) }
+
+    /// Une photo Wallhaven prend son nom dès qu'il est connu.
+    private func named(_ w: Wallpaper) -> Wallpaper {
+        guard w.id.hasPrefix("wh-"), let n = names.names[String(w.id.dropFirst(3))] else { return w }
+        var r = w; r.title = n.title; r.subtitle = n.credit ?? w.subtitle
+        return r
+    }
 
     var body: some View {
         ZStack {
@@ -91,7 +105,8 @@ struct GalleryView: View {
                     header
                     content.frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                PreviewPane(item: shown, store: store, prefs: prefs, onPreview: onPreview)
+                PreviewPane(item: shown, tags: shown.flatMap { names.names[String($0.id.dropFirst(3))]?.tags } ?? [],
+                            store: store, prefs: prefs, onPreview: onPreview)
                     .frame(width: 320)
                     .background(.black.opacity(0.28))
                     .overlay(alignment: .leading) { Rectangle().fill(.white.opacity(0.07)).frame(width: 1) }
@@ -99,7 +114,12 @@ struct GalleryView: View {
         }
         .foregroundStyle(.white)
         .frame(minWidth: 980, minHeight: 640)
-        .onAppear { if model.photos.isEmpty { model.loadPhotos(reset: true) } }
+        .onAppear {
+            if model.photos.isEmpty { model.loadPhotos(reset: true) }
+            store.unnamedPhotos.forEach { names.want($0, urgent: true) }
+            store.applyNames(names.names)
+        }
+        .onChange(of: names.names) { store.applyNames(names.names) }
     }
 
     // MARK: En-tête + onglets
@@ -154,11 +174,16 @@ struct GalleryView: View {
         .scrollIndicators(.never)
     }
 
-    private func card(_ w: Wallpaper, alwaysText: Bool) -> some View {
+    private func card(_ w: Wallpaper, naming: Bool = false) -> some View {
         WallCard(w: w, selected: model.selected?.id == w.id, current: store.current?.id == w.id,
-                 progress: store.progress[w.id], alwaysText: alwaysText)
-            .onTapGesture(count: 2) { model.selected = w; store.apply(w) }
-            .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { model.selected = w } }
+                 progress: store.progress[w.id], naming: naming)
+            .onTapGesture(count: 2) { select(w); store.apply(named(w)) }
+            .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { select(w) } }
+    }
+
+    private func select(_ w: Wallpaper) {
+        model.selected = w
+        if w.id.hasPrefix("wh-") { names.want(String(w.id.dropFirst(3)), urgent: true) }
     }
 
     // MARK: Photos
@@ -167,7 +192,7 @@ struct GalleryView: View {
         VStack(spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.white.opacity(0.45))
-                TextField("", text: $model.query, prompt: Text("Rechercher en anglais : forest, tokyo, aurora…").foregroundStyle(.white.opacity(0.35)))
+                TextField("", text: $model.query, prompt: Text("Rechercher : montagne, plage, Tokyo, aurore boréale…").foregroundStyle(.white.opacity(0.35)))
                     .textFieldStyle(.plain)
                     .onSubmit { model.loadPhotos(reset: true) }
                 if !model.query.isEmpty {
@@ -200,15 +225,20 @@ struct GalleryView: View {
             } else {
                 grid {
                     ForEach(model.photos) { p in
-                        card(p.wallpaper, alwaysText: false)
-                            .onAppear { if p.id == model.photos.last?.id { model.loadPhotos(reset: false) } }
+                        let n = names.names[p.id]
+                        card(p.wallpaper(n), naming: n == nil)
+                            .onAppear {
+                                names.want(p.id)
+                                if p.id == model.photos.last?.id { model.loadPhotos(reset: false) }
+                            }
+                            .onDisappear { names.forget(p.id) }
                     }
                     if model.loadingPhotos {
                         ForEach(0..<(model.photos.isEmpty ? 12 : 4), id: \.self) { _ in SkeletonCard() }
                     }
                 }
             }
-            Text("Photos de la communauté Wallhaven, filtrées « tout public », 1440p minimum.")
+            Text("Photos de la communauté Wallhaven, filtrées « tout public », 1440p minimum. Les noms viennent de leurs mots-clés.")
                 .font(.system(size: 10.5)).foregroundStyle(.white.opacity(0.3)).padding(.bottom, 10)
         }
     }
@@ -230,7 +260,7 @@ struct GalleryView: View {
                 .scrollIndicators(.never)
                 grid {
                     ForEach(c.items.filter { model.aerialCategory == nil || $0.categories.contains(model.aerialCategory!) }) { a in
-                        card(a.wallpaper, alwaysText: true)
+                        card(a.wallpaper)
                     }
                 }
                 Text("Les vidéos aériennes de l’Apple TV et de l’économiseur d’écran, en 1080p.")
@@ -273,7 +303,7 @@ struct GalleryView: View {
                 .padding(.horizontal, 22)
                 grid {
                     ForEach(store.history) { w in
-                        card(w, alwaysText: true)
+                        card(w)
                             .contextMenu {
                                 Button("Utiliser") { store.apply(w) }
                                 Button("Supprimer", role: .destructive) {
@@ -297,6 +327,7 @@ func fallbackThumb(_ w: Wallpaper?) -> URL? {
 
 struct PreviewPane: View {
     let item: Wallpaper?
+    var tags: [String] = []
     @ObservedObject var store: WallpaperStore
     @ObservedObject var prefs: Prefs
     var onPreview: () -> Void
@@ -313,6 +344,9 @@ struct PreviewPane: View {
                         if let b = w.badge { Badge(text: b) }
                     }
                     if let s = w.subtitle { Text(s).font(.system(size: 12)).foregroundStyle(.white.opacity(0.55)).lineLimit(3) }
+                    if !tags.isEmpty {
+                        FlowTags(tags: tags).padding(.top, 4)
+                    }
                     Text(Self.note(w)).font(.system(size: 11)).foregroundStyle(.white.opacity(0.38)).padding(.top, 2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -523,7 +557,7 @@ struct WallCard: View {
     let selected: Bool
     let current: Bool
     let progress: Double?
-    let alwaysText: Bool
+    var naming = false            // nom pas encore connu : petite barre animée à la place
     @State private var hover = false
 
     var body: some View {
@@ -532,9 +566,13 @@ struct WallCard: View {
             .aspectRatio(16 / 10, contentMode: .fit)
             .overlay(Thumb(url: w.thumb, fallback: fallbackThumb(w)))
             .overlay(alignment: .bottomLeading) {
-                if alwaysText || hover {
+                Group {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(w.title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                        if naming {
+                            SkeletonLine(width: 110).padding(.vertical, 3)
+                        } else {
+                            Text(w.title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                        }
                         if let s = w.subtitle { Text(s).font(.system(size: 10.5)).foregroundStyle(.white.opacity(0.65)).lineLimit(1) }
                     }
                     .padding(.horizontal, 10).padding(.vertical, 8).padding(.top, 18)
@@ -597,6 +635,52 @@ struct Thumb: View {
     }
     private var placeholder: some View {
         LinearGradient(colors: [.white.opacity(0.07), .white.opacity(0.03)], startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+}
+
+struct SkeletonLine: View {
+    let width: CGFloat
+    @State private var on = false
+    var body: some View {
+        Capsule().fill(.white.opacity(on ? 0.35 : 0.15)).frame(width: width, height: 9)
+            .onAppear { withAnimation(.easeInOut(duration: 0.8).repeatForever()) { on = true } }
+    }
+}
+
+/// Mots-clés de la photo, en petites pastilles sur plusieurs lignes.
+struct FlowTags: View {
+    let tags: [String]
+    var body: some View {
+        FlowLayout(spacing: 5) {
+            ForEach(tags, id: \.self) { t in
+                Text(t).font(.system(size: 10.5, weight: .medium)).foregroundStyle(.white.opacity(0.7))
+                    .padding(.horizontal, 7).padding(.vertical, 3)
+                    .background(Capsule().fill(.white.opacity(0.08)))
+            }
+        }
+    }
+}
+
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let w = proposal.width ?? 300
+        var x: CGFloat = 0, y: CGFloat = 0, line: CGFloat = 0
+        for v in subviews {
+            let s = v.sizeThatFits(.unspecified)
+            if x + s.width > w, x > 0 { x = 0; y += line + spacing; line = 0 }
+            x += s.width + spacing; line = max(line, s.height)
+        }
+        return CGSize(width: w, height: y + line)
+    }
+    func placeSubviews(in b: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = b.minX, y = b.minY, line: CGFloat = 0
+        for v in subviews {
+            let s = v.sizeThatFits(.unspecified)
+            if x + s.width > b.maxX, x > b.minX { x = b.minX; y += line + spacing; line = 0 }
+            v.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(s))
+            x += s.width + spacing; line = max(line, s.height)
+        }
     }
 }
 

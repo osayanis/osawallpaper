@@ -41,7 +41,7 @@ Dès que tu déverrouilles, tout disparaît : ton bureau reste exactement comme 
 
 Menu OsaWallpaper → **Choisir un fond d’écran…** (⌘F) ouvre une galerie avec un aperçu en direct sur une maquette de l’écran verrouillé :
 
-- **Photos** : des milliers de fonds en 1440p minimum (souvent en 4K) venus de [Wallhaven](https://wallhaven.cc), filtrés « tout public ». Tu peux chercher ou choisir un thème : nature, montagnes, espace, océan, villes, nuit, etc.
+- **Photos** : des milliers de fonds en 1440p minimum (souvent en 4K) venus de [Wallhaven](https://wallhaven.cc), filtrés « tout public ». Chaque photo a un nom en français tiré de ses mots-clés (« Lofoten, Norvège », « Mount Fuji, Japon ») et le nom de son photographe. La recherche comprend le français (« montagne enneigée », « aurore boréale », « Tokyo ») ; tu peux aussi choisir un thème : nature, montagnes, espace, océan, villes, nuit, etc.
 - **Vidéos Apple** : les vidéos aériennes de l’Apple TV et de l’économiseur d’écran (Terre, paysages, villes, sous l’eau), en 1080p et en boucle.
 - **Ton lien** : colle une vidéo **YouTube** (lue en direct par le lecteur officiel, en sourdine) ou un lien direct **.mp4 / .mov / .jpg / .png**. Tu peux aussi glisser un fichier depuis ton Mac.
 - **Mes fonds** : les 40 derniers fonds utilisés, pour revenir à l’un d’eux en un clic.
