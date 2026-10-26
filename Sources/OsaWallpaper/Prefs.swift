@@ -13,6 +13,8 @@ final class Prefs: ObservableObject {
     @Published var showVolume: Bool { didSet { d.set(showVolume, forKey: "showVolume") } }
     @Published var showBrightness: Bool { didSet { d.set(showBrightness, forKey: "showBrightness") } }
     @Published var autoUpdate: Bool { didSet { d.set(autoUpdate, forKey: "autoUpdate") } }
+    @Published var motionArt: Bool { didSet { d.set(motionArt, forKey: "motionArt") } }          // pochettes animées Apple Music
+    @Published var hideSystemHUD: Bool { didSet { d.set(hideSystemHUD, forKey: "hideSystemHUD") } }  // remplace les indicateurs de macOS
     @Published var allScreens: Bool { didSet { d.set(allScreens, forKey: "allScreens") } }
     @Published var lockScreen: Bool { didSet { d.set(lockScreen, forKey: "lockScreen") } }        // affichage sur l'écran verrouillé
     @Published var weatherInMenuBar: Bool { didSet { d.set(weatherInMenuBar, forKey: "weatherInMenuBar") } }
@@ -22,7 +24,7 @@ final class Prefs: ObservableObject {
     private init() {
         d.register(defaults: [
             "artBackground": true, "showWeather": true, "showLyrics": true,
-            "showAirpods": true, "showCharging": true, "showVolume": true, "showBrightness": true, "autoUpdate": true, "allScreens": true, "lockScreen": true, "weatherInMenuBar": true, "onboarded": false,
+            "showAirpods": true, "showCharging": true, "showVolume": true, "showBrightness": true, "autoUpdate": true, "motionArt": true, "hideSystemHUD": true, "allScreens": true, "lockScreen": true, "weatherInMenuBar": true, "onboarded": false,
         ])
         artBackground = d.bool(forKey: "artBackground")
         showWeather = d.bool(forKey: "showWeather")
@@ -32,6 +34,8 @@ final class Prefs: ObservableObject {
         showVolume = d.bool(forKey: "showVolume")
         showBrightness = d.bool(forKey: "showBrightness")
         autoUpdate = d.bool(forKey: "autoUpdate")
+        motionArt = d.bool(forKey: "motionArt")
+        hideSystemHUD = d.bool(forKey: "hideSystemHUD")
         allScreens = d.bool(forKey: "allScreens")
         lockScreen = d.bool(forKey: "lockScreen")
         weatherInMenuBar = d.bool(forKey: "weatherInMenuBar")

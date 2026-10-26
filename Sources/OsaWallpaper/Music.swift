@@ -18,6 +18,8 @@ final class MusicWatcher: ObservableObject {
     @Published var accent: Color = Color(red: 0.62, green: 0.75, blue: 1.0)
     @Published var lyrics: [LyricLine] = []
     @Published var sampledAt = Date()          // instant de lecture de `position` → interpolation
+    @Published var motion: URL?                // pochette animée Apple Music (vidéo en cache), si elle existe
+    let motionPlayer = MotionPlayer()
 
     private let q = DispatchQueue(label: "osa.music", qos: .utility)
     private var busy = false
@@ -40,6 +42,10 @@ final class MusicWatcher: ObservableObject {
             artwork = img; backdrop = Self.blurred(img); palette = Self.palette(img)
             if let c = Self.vibrantColor(img) { accent = c }
         }
+        // OSAWALLPAPER_DEMO_ALBUM="Artiste|Album" : teste la pochette animée d'un vrai album.
+        if let a = ProcessInfo.processInfo.environment["OSAWALLPAPER_DEMO_ALBUM"]?.components(separatedBy: "|"), a.count == 2 {
+            loadMotion("demo", artist: a[0], album: a[1])
+        }
     }
 
     /// Position estimée maintenant (la lecture n'est faite que toutes les 1,5 s).
@@ -57,7 +63,7 @@ final class MusicWatcher: ObservableObject {
             let out = Shell.osa(Self.script(), timeout: 4)?.trimmingCharacters(in: .whitespacesAndNewlines)
             guard let out, !out.isEmpty, out != "none" else {
                 DispatchQueue.main.async {
-                    if self.music != nil { self.music = nil; self.artwork = nil; self.backdrop = nil; self.palette = []; self.lyrics = [] }
+                    if self.music != nil { self.music = nil; self.artwork = nil; self.backdrop = nil; self.palette = []; self.lyrics = []; self.motionAlbum = ""; self.setMotion(nil) }
                     self.key = ""
                 }
                 return
@@ -85,6 +91,7 @@ final class MusicWatcher: ObservableObject {
                     self.lyrics = []
                     self.loadArtwork(k, art: art, artist: info.artist, title: info.title, album: info.album)
                     self.fetchLyrics(k, artist: info.artist, title: info.title, album: info.album, duration: info.duration)
+                    self.loadMotion(k, artist: info.artist, album: info.album)
                 }
             }
         }
@@ -159,6 +166,25 @@ final class MusicWatcher: ObservableObject {
                   let img = NSImage(contentsOf: big) else { continue }
             apply(img); return
         }
+    }
+
+    // MARK: Pochette animée
+    private var motionAlbum = ""
+    private func loadMotion(_ k: String, artist: String, album: String) {
+        let albumKey = "\(artist)|\(album)"
+        if albumKey == motionAlbum { return }        // même album : on garde la vidéo en cours
+        motionAlbum = albumKey
+        setMotion(nil)
+        guard Prefs.shared.motionArt else { return }
+        Task.detached(priority: .utility) {
+            let u = await MotionArt.find(artist: artist, album: album)
+            await MainActor.run { if self.motionAlbum == albumKey { self.setMotion(u) } }
+        }
+    }
+
+    private func setMotion(_ u: URL?) {
+        motionPlayer.load(u)
+        if motion != u { motion = u }
     }
 
     // MARK: Paroles synchronisées (LRCLIB)

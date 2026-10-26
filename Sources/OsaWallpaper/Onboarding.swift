@@ -214,8 +214,8 @@ private struct AccessibilityRow: View {
             Image(systemName: "sun.max.fill").font(.system(size: 16, weight: .semibold)).foregroundStyle(.yellow)
                 .frame(width: 38, height: 38).background(Circle().fill(.yellow.opacity(0.15)))
             VStack(alignment: .leading, spacing: 2) {
-                Text("Touches de luminosité (facultatif)").font(.system(size: 13, weight: .semibold))
-                Text(granted ? "Autorisé" : "Accessibilité, pour la pastille de luminosité").font(.system(size: 12)).foregroundStyle(.white.opacity(0.5))
+                Text("Touches son et luminosité (facultatif)").font(.system(size: 13, weight: .semibold))
+                Text(granted ? "Autorisé" : "Accessibilité : nos pastilles à la place de celles de macOS").font(.system(size: 12)).foregroundStyle(.white.opacity(0.5))
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()

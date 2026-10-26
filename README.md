@@ -27,7 +27,8 @@ Et partout ailleurs, tes AirPods, ta charge, le volume, la luminosité et la mé
 
 Quand ton Mac est verrouillé et qu’un morceau joue dans **Music** ou **Spotify** :
 
-- **La pochette devient le fond.** Floutée, mêlée à un dégradé de ses propres couleurs avec un grain léger, elle remplit l’écran et se fond vers le bas pour laisser visibles ta photo et le champ du mot de passe.
+- **Les pochettes animées d’Apple Music.** Quand l’artiste a fait une pochette animée (comme sur l’iPhone), elle devient tout ton fond d’écran, en vidéo. Elle est téléchargée une seule fois puis gardée en cache.
+- **Sinon, la pochette devient le fond.** Floutée, mêlée à un dégradé de ses propres couleurs avec un grain léger, elle remplit l’écran et se fond vers le bas pour laisser visibles ta photo et le champ du mot de passe.
 - **L’heure, comme sur l’iPhone.** En SF Pro Bold aux chiffres serrés, une pointe de la couleur de la pochette, avec la date et la météo.
 - **La pochette en relief.** Elle s’incline doucement vers ta souris.
 - **Un lecteur en verre clair.** Titre, progression, favori, précédent / lecture / suivant, sortie audio.
@@ -47,7 +48,8 @@ Dès que tu déverrouilles, tout disparaît : ton bureau reste exactement comme 
 | 🎧 **AirPods et casques** | Dès qu’un casque Bluetooth se connecte, une pastille apparaît en haut de l’écran avec sa batterie et le volume, au-dessus de toutes tes apps, même en plein écran. |
 | ⚡ **Charge** | Branche ton Mac : une pastille « En charge » s’affiche avec le pourcentage. |
 | 🔊 **Volume** | Une pastille discrète avec le niveau, l’icône de ton casque s’il est connecté. |
-| ☀️ **Luminosité** | Une pastille quand tu appuies sur F1 / F2 (autorisation Accessibilité facultative). |
+| ☀️ **Luminosité** | Une pastille quand tu appuies sur F1 / F2. |
+| 🙈 **Adieu les indicateurs de macOS** | Avec l’autorisation Accessibilité (facultative), OsaWallpaper gère lui-même les touches son et luminosité : seules ses pastilles s’affichent. |
 | 🌤️ **Météo** | La température et le ciel dans la barre de menus (Open-Meteo, sans clé ni compte). |
 
 ## 👋 Premier lancement
@@ -107,6 +109,8 @@ OSAWALLPAPER_DEMO=/chemin/vers/une/image.jpg ./OsaWallpaper.app/Contents/MacOS/O
 | Charge | Notifications IOKit (`IOPSNotificationCreateRunLoopSource`) + `notify`. |
 | Volume | Écouteur CoreAudio sur le volume et la sourdine de la sortie par défaut. |
 | Luminosité | `DisplayServicesGetBrightness` (framework privé) lu 5 fois par seconde, pastille seulement après F1 / F2. |
+| Pochettes animées | Page de l’album sur music.apple.com (JSON `serialized-server-data`, vidéo `motionDetailSquare`), qualité 1080p HEVC téléchargée une fois, lue en boucle avec `AVPlayerLooper` seulement quand l’écran est verrouillé. Méthode non officielle. |
+| Indicateurs natifs | Interception des touches spéciales (`CGEventTap`), son réglé via CoreAudio, luminosité via `DisplayServicesSetBrightness`. |
 | Mises à jour | API GitHub Releases, archive `OsaWallpaper.zip`, signature vérifiée avec `SecStaticCode`. |
 | Météo | [Open-Meteo](https://open-meteo.com), position par IP ou ville choisie. |
 
@@ -116,6 +120,7 @@ OSAWALLPAPER_DEMO=/chemin/vers/une/image.jpg ./OsaWallpaper.app/Contents/MacOS/O
 
 - L’affichage sur l’écran verrouillé repose sur une **API privée** de macOS : une future version du système peut le casser.
 - La batterie des AirPods vient de `system_profiler` : elle peut mettre quelques secondes à apparaître après la connexion.
+- Les pochettes animées passent par la page web d’Apple Music, pas par une API officielle : si Apple la modifie, l’app revient simplement à la pochette fixe. Tous les albums n’en ont pas.
 - Spotify : pas de bouton favori (son AppleScript ne le permet pas).
 
 ---
