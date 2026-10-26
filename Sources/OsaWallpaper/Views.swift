@@ -67,7 +67,7 @@ struct LockView: View {
                         // Le fond recouvre l'horloge de macOS : on affiche la nôtre, en verre.
                         Spacer().frame(height: topInset + h * 0.035)
                         InfoRow(devices: devices, prefs: prefs)
-                        ClockView(size: h * 0.135, tint: music.accent).padding(.top, -h * 0.006)
+                        ClockView(size: h * 0.13, tint: music.accent).padding(.top, -h * 0.006)
                         Spacer().frame(height: h * 0.02)
                     } else {
                         Spacer().frame(height: h * 0.27)   // l'horloge de macOS reste visible au-dessus
@@ -252,10 +252,10 @@ struct ClockView: View {
     var body: some View {
         TimelineView(.everyMinute) { tl in
             let t = Self.f.string(from: tl.date)
-            // SF Pro haute et serrée, comme l'heure de l'écran verrouillé de l'iPhone.
-            let text = Text(t).font(.system(size: size, weight: .semibold).width(.condensed)).kerning(-size * 0.01)
+            // SF Pro Bold aux chiffres serrés : l'heure de l'écran verrouillé de l'iPhone et de l'iPad.
+            let text = Text(t).font(.system(size: size, weight: .bold)).kerning(-size * 0.025)
             ZStack {
-                text.foregroundStyle(LinearGradient(colors: [.white, .white.opacity(0.82)], startPoint: .top, endPoint: .bottom))
+                text.foregroundStyle(.white.opacity(0.9))
                 // une pointe de la couleur de la pochette dans le bas des chiffres
                 text.foregroundStyle(LinearGradient(colors: [.clear, tint.opacity(0.35)], startPoint: .center, endPoint: .bottom))
                     .blendMode(.plusLighter)
