@@ -171,7 +171,7 @@ private struct PermissionStep: View {
         VStack(spacing: 16) {
             Image(systemName: "hand.raised.fill").font(.system(size: 34)).foregroundStyle(.pink)
                 .frame(width: 72, height: 72).background(Circle().fill(.pink.opacity(0.15)))
-            Text("Une seule autorisation")
+            Text("Une seule autorisation nécessaire")
                 .font(.system(size: 24, weight: .bold, design: .rounded))
             Text("OsaWallpaper lit le morceau en cours dans ton lecteur pour l’afficher. macOS va te demander si tu l’acceptes.")
                 .font(.system(size: 13.5)).foregroundStyle(.white.opacity(0.6))
@@ -191,6 +191,7 @@ private struct PermissionStep: View {
                         .toggleStyle(.switch).labelsHidden()
                 }
                 .rowStyle()
+                AccessibilityRow()
             }
             .padding(.top, 8)
 
@@ -200,6 +201,37 @@ private struct PermissionStep: View {
                 .frame(maxWidth: 420).padding(.top, 6)
         }
         .padding(.horizontal, 36)
+    }
+}
+
+/// Facultatif : voir les touches de luminosité (F1/F2) pour afficher la pastille.
+private struct AccessibilityRow: View {
+    @State private var granted = Devices.accessibilityGranted
+    private let poll = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "sun.max.fill").font(.system(size: 16, weight: .semibold)).foregroundStyle(.yellow)
+                .frame(width: 38, height: 38).background(Circle().fill(.yellow.opacity(0.15)))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Touches de luminosité (facultatif)").font(.system(size: 13, weight: .semibold))
+                Text(granted ? "Autorisé" : "Accessibilité, pour la pastille de luminosité").font(.system(size: 12)).foregroundStyle(.white.opacity(0.5))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            if granted {
+                Image(systemName: "checkmark.circle.fill").font(.system(size: 22)).foregroundStyle(.green)
+                    .transition(.scale.combined(with: .opacity))
+            } else {
+                Button("Autoriser") { AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary) }
+                    .buttonStyle(SmallButton(tint: .yellow))
+            }
+        }
+        .rowStyle()
+        .onReceive(poll) { _ in
+            let g = Devices.accessibilityGranted
+            if g != granted { withAnimation(.spring) { granted = g } }
+        }
     }
 }
 

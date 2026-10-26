@@ -84,7 +84,7 @@ final class MusicWatcher: ObservableObject {
                     self.key = k
                     self.lyrics = []
                     self.loadArtwork(k, art: art, artist: info.artist, title: info.title, album: info.album)
-                    self.fetchLyrics(k, artist: info.artist, title: info.title, duration: info.duration)
+                    self.fetchLyrics(k, artist: info.artist, title: info.title, album: info.album, duration: info.duration)
                 }
             }
         }
@@ -162,32 +162,87 @@ final class MusicWatcher: ObservableObject {
     }
 
     // MARK: Paroles synchronisées (LRCLIB)
-    private func fetchLyrics(_ k: String, artist: String, title: String, duration: Double) {
+    // Plusieurs essais, du plus précis au plus large : titre exact, puis titre nettoyé
+    // (« feat. », « Remastered », « Live »…), puis recherche libre. On garde la version
+    // dont la durée colle au morceau (sinon les paroles seraient décalées).
+    private func fetchLyrics(_ k: String, artist: String, title: String, album: String, duration: Double) {
+        Task.detached(priority: .utility) {
+            let lines = await Self.findLyrics(artist: artist, title: title, album: album, duration: duration)
+            await MainActor.run { if self.key == k { self.lyrics = lines } }
+        }
+    }
+
+    static func findLyrics(artist: String, title: String, album: String, duration: Double) async -> [LyricLine] {
         func enc(_ s: String) -> String {
-            var a = CharacterSet.urlQueryAllowed; a.remove(charactersIn: "&+=")
+            var a = CharacterSet.urlQueryAllowed; a.remove(charactersIn: "&+=?")
             return s.addingPercentEncoding(withAllowedCharacters: a) ?? ""
         }
-        func req(_ s: String) -> URLRequest {
-            var r = URLRequest(url: URL(string: s)!)
-            r.setValue("OsaWallpaper (https://osalabs.fr)", forHTTPHeaderField: "User-Agent")
-            return r
+        func fetch(_ s: String) async -> Any? {
+            guard let u = URL(string: "https://lrclib.net/api/" + s) else { return nil }
+            var r = URLRequest(url: u, timeoutInterval: 12)
+            r.setValue("OsaWallpaper (https://github.com/osayanis/osawallpaper)", forHTTPHeaderField: "User-Agent")
+            guard let (d, resp) = try? await URLSession.shared.data(for: r), (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            return try? JSONSerialization.jsonObject(with: d)
         }
-        let set: (String) -> Void = { synced in
-            let lines = Self.parseLRC(synced)
-            guard !lines.isEmpty else { return }
-            DispatchQueue.main.async { if self.key == k { self.lyrics = lines } }
+        func synced(_ j: [String: Any]?) -> [LyricLine] {
+            guard let s = j?["syncedLyrics"] as? String else { return [] }
+            return parseLRC(s)
         }
-        let get = "https://lrclib.net/api/get?artist_name=\(enc(artist))&track_name=\(enc(title))&duration=\(Int(duration.rounded()))"
-        let search = "https://lrclib.net/api/search?track_name=\(enc(title))&artist_name=\(enc(artist))"
-        URLSession.shared.dataTask(with: req(get)) { data, _, _ in
-            if let data, let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let s = j["syncedLyrics"] as? String, !s.isEmpty { set(s); return }
-            URLSession.shared.dataTask(with: req(search)) { data, _, _ in
-                guard let data, let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
-                      let s = arr.compactMap({ $0["syncedLyrics"] as? String }).first(where: { !$0.isEmpty }) else { return }
-                set(s)
-            }.resume()
-        }.resume()
+        /// Meilleur résultat d'une recherche : paroles synchronisées, durée la plus proche (±8 s si connue).
+        func best(_ arr: [[String: Any]]) -> [LyricLine] {
+            let cands = arr.filter { ($0["syncedLyrics"] as? String)?.isEmpty == false }
+            let scored = cands.map { c -> (Double, [String: Any]) in
+                let d = (c["duration"] as? Double) ?? 0
+                return (duration > 0 && d > 0 ? abs(d - duration) : 0, c)
+            }.sorted { $0.0 < $1.0 }
+            guard let first = scored.first, duration <= 0 || first.0 <= 8 else { return [] }
+            return synced(first.1)
+        }
+
+        let cleanTitle = cleanTrack(title), mainArtist = cleanArtist(artist)
+        let dur = duration > 0 ? "&duration=\(Int(duration.rounded()))" : ""
+        var attempts: [String] = []
+        if duration > 0 {
+            attempts.append("get?artist_name=\(enc(artist))&track_name=\(enc(title))&album_name=\(enc(album))\(dur)")
+            attempts.append("get?artist_name=\(enc(artist))&track_name=\(enc(title))\(dur)")
+            if cleanTitle != title || mainArtist != artist {
+                attempts.append("get?artist_name=\(enc(mainArtist))&track_name=\(enc(cleanTitle))\(dur)")
+            }
+        }
+        for a in attempts {
+            let l = synced(await fetch(a) as? [String: Any])
+            if !l.isEmpty { return l }
+        }
+        let searches = [
+            "search?track_name=\(enc(cleanTitle))&artist_name=\(enc(mainArtist))",
+            "search?q=\(enc("\(mainArtist) \(cleanTitle)"))",
+            "search?track_name=\(enc(cleanTitle))",
+        ]
+        for q in searches {
+            let l = best((await fetch(q) as? [[String: Any]]) ?? [])
+            if !l.isEmpty { return l }
+        }
+        return []
+    }
+
+    /// « Titre (feat. X) - Remastered 2011 » → « Titre »
+    static func cleanTrack(_ t: String) -> String {
+        var s = t
+        for pat in [#"\s*[\(\[](feat|ft|with|avec)\.?\s[^\)\]]*[\)\]]"#,
+                    #"\s*[\(\[][^\)\]]*(remaster|version|edit|live|mono|stereo|deluxe|bonus|explicit|from)[^\)\]]*[\)\]]"#,
+                    #"\s+-\s+.*(remaster|version|edit|live|mono|stereo|mix|from).*$"#,
+                    #"\s+(feat|ft)\.?\s.*$"#] {
+            s = s.replacingOccurrences(of: pat, with: "", options: [.regularExpression, .caseInsensitive])
+        }
+        s = s.trimmingCharacters(in: .whitespaces)
+        return s.isEmpty ? t : s
+    }
+
+    /// « A, B & C » / « A feat. B » → « A »
+    static func cleanArtist(_ a: String) -> String {
+        let s = a.replacingOccurrences(of: #"\s*(,|&|\sx\s|\sfeat\.?\s|\sft\.?\s|\set\s).*$"#, with: "", options: [.regularExpression, .caseInsensitive])
+            .trimmingCharacters(in: .whitespaces)
+        return s.isEmpty ? a : s
     }
 
     static func parseLRC(_ raw: String) -> [LyricLine] {
