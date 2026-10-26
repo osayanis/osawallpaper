@@ -46,6 +46,8 @@ final class Devices: ObservableObject {
     private var muted = false
     private var brightnessKeyUntil: TimeInterval = 0
     private var keyMonitor: Any?
+    fileprivate var tap: CFMachPort?
+    private var tapRetry: Timer?
 
     func start() {
         readBattery(initial: true)
@@ -150,9 +152,9 @@ final class Devices: ObservableObject {
     }
 
     /// Le volume (ou la sourdine) vient de changer : pastille, ou mise à jour de celle du casque.
-    private func volumeChanged() {
+    private func volumeChanged(force: Bool = false) {
         let v = readVolume(outputDevice), m = readMute(outputDevice)
-        guard v != volume || m != muted else { return }
+        guard force || v != volume || m != muted else { return }
         volume = v; muted = m
         guard let v else { return }
         if case .headphones(let h, _) = toast { toast = .headphones(h, volume: m ? 0 : v); show(toast!, for: 2.5); return }
@@ -180,6 +182,12 @@ final class Devices: ObservableObject {
               let sym = dlsym(h, "DisplayServicesGetBrightness") else { return nil }
         return unsafeBitCast(sym, to: GetBrightness.self)
     }()
+    private typealias SetBrightness = @convention(c) (CGDirectDisplayID, Float) -> Int32
+    private static let setBrightness: SetBrightness? = {
+        guard let h = dlopen("/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices", RTLD_NOW),
+              let sym = dlsym(h, "DisplayServicesSetBrightness") else { return nil }
+        return unsafeBitCast(sym, to: SetBrightness.self)
+    }()
 
     /// Aucune notification publique n'existe pour la luminosité : lecture 5 fois par seconde
     /// (un appel C, coût négligeable). La pastille n'apparaît que juste après un appui sur
@@ -194,6 +202,7 @@ final class Devices: ObservableObject {
             let key = (e.data1 & 0xFFFF0000) >> 16
             if key == 2 || key == 3 { self?.brightnessKeyUntil = Date.timeIntervalSinceReferenceDate + 1.2 }
         }
+        installTap()
         brightnessTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in self?.pollBrightness() }
         brightnessTimer?.tolerance = 0.05
         pollBrightness()
@@ -206,6 +215,97 @@ final class Devices: ObservableObject {
         guard lastBrightness >= 0, abs(b - lastBrightness) > 0.002,
               Date.timeIntervalSinceReferenceDate < brightnessKeyUntil else { return }
         if Prefs.shared.showBrightness { show(.brightness(b), for: 1.8) }
+    }
+
+    // MARK: Touches son / luminosité (remplace les indicateurs de macOS)
+    // Sur macOS récent, l'indicateur natif est dessiné par le Centre de contrôle : impossible
+    // de le masquer sans casser la barre de menus. On intercepte donc les touches (autorisation
+    // Accessibilité), on règle nous-mêmes le son ou la luminosité, et seule notre pastille s'affiche.
+
+    func installTap() {
+        guard tap == nil else { return }
+        let mask = CGEventMask(1 << 14)   // NSEventTypeSystemDefined
+        let me = Unmanaged.passUnretained(self).toOpaque()
+        tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
+                                eventsOfInterest: mask, callback: { _, type, event, ref in
+            guard let ref else { return Unmanaged.passUnretained(event) }
+            let d = Unmanaged<Devices>.fromOpaque(ref).takeUnretainedValue()
+            if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                if let t = d.tap { CGEvent.tapEnable(tap: t, enable: true) }
+                return Unmanaged.passUnretained(event)
+            }
+            return d.handleKey(event) ? nil : Unmanaged.passUnretained(event)
+        }, userInfo: me)
+        if let tap {
+            let src = CFMachPortCreateRunLoopSource(nil, tap, 0)
+            CFRunLoopAddSource(CFRunLoopGetMain(), src, .commonModes)
+            tapRetry?.invalidate(); tapRetry = nil
+            log.notice("touches son/luminosité interceptées")
+        } else if tapRetry == nil {
+            // Pas encore d'autorisation Accessibilité : on réessaie, sans redémarrage nécessaire.
+            tapRetry = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+                if AXIsProcessTrusted() { self?.installTap() }
+            }
+        }
+    }
+
+    /// true = touche gérée ici (macOS ne la voit pas, donc pas d'indicateur natif).
+    private func handleKey(_ event: CGEvent) -> Bool {
+        guard Prefs.shared.hideSystemHUD, let e = NSEvent(cgEvent: event), e.subtype.rawValue == 8 else { return false }
+        let key = Int((e.data1 & 0xFFFF0000) >> 16)
+        let down = ((e.data1 & 0xFF00) >> 8) == 0x0A
+        // ⇧⌥ + touche = petits pas, comme macOS
+        let fine = event.flags.contains(.maskShift) && event.flags.contains(.maskAlternate)
+        let step: Float = fine ? 1 / 64 : 1 / 16
+        switch key {
+        case 0, 1, 7:   // son +, son −, sourdine
+            guard Prefs.shared.showVolume, volumeSettable(outputDevice) else { return false }
+            if down { DispatchQueue.main.async { self.stepVolume(key == 7 ? nil : (key == 0 ? step : -step)) } }
+            return true
+        case 2, 3:      // luminosité +, −
+            guard Prefs.shared.showBrightness, Self.setBrightness != nil, let disp = Self.builtinDisplay else { return false }
+            if down {
+                DispatchQueue.main.async {
+                    var b: Float = 0
+                    _ = Self.getBrightness?(disp, &b)
+                    let nb = max(0, min(1, b + (key == 2 ? step : -step)))
+                    _ = Self.setBrightness?(disp, nb)
+                    self.lastBrightness = nb
+                    self.show(.brightness(nb), for: 1.8)
+                }
+            }
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static var builtinDisplay: CGDirectDisplayID? {
+        var ids = [CGDirectDisplayID](repeating: 0, count: 8); var n: UInt32 = 0
+        CGGetOnlineDisplayList(8, &ids, &n)
+        return ids.prefix(Int(n)).first { CGDisplayIsBuiltin($0) != 0 } ?? CGMainDisplayID()
+    }
+
+    private func volumeSettable(_ id: AudioDeviceID) -> Bool {
+        var a = addr(kAudioHardwareServiceDeviceProperty_VirtualMainVolume, kAudioDevicePropertyScopeOutput)
+        var ok: DarwinBoolean = false
+        return AudioObjectHasProperty(id, &a) && AudioObjectIsPropertySettable(id, &a, &ok) == noErr && ok.boolValue
+    }
+
+    /// delta nil = basculer la sourdine. Monter le son enlève la sourdine.
+    private func stepVolume(_ delta: Float?) {
+        let id = outputDevice
+        var m = addr(kAudioDevicePropertyMute, kAudioDevicePropertyScopeOutput)
+        func setMute(_ on: Bool) {
+            var v: UInt32 = on ? 1 : 0
+            if AudioObjectHasProperty(id, &m) { AudioObjectSetPropertyData(id, &m, 0, nil, UInt32(MemoryLayout<UInt32>.size), &v) }
+        }
+        guard let delta else { setMute(!readMute(id)); volumeChanged(force: true); return }
+        var v = Float32(max(0, min(1, (readVolume(id) ?? 0.5) + delta)))
+        var a = addr(kAudioHardwareServiceDeviceProperty_VirtualMainVolume, kAudioDevicePropertyScopeOutput)
+        AudioObjectSetPropertyData(id, &a, 0, nil, UInt32(MemoryLayout<Float32>.size), &v)
+        if delta > 0, readMute(id) { setMute(false) }
+        volumeChanged(force: true)       // même au maximum / minimum, la pastille répond à la touche
     }
 
     private func deviceName(_ id: AudioDeviceID) -> String? {

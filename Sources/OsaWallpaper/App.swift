@@ -188,6 +188,7 @@ struct SettingsView: View {
             Section {
                 Toggle("Afficher sur l’écran verrouillé", isOn: $prefs.lockScreen)
                 Toggle("Fond tiré de la pochette", isOn: $prefs.artBackground)
+                Toggle("Pochettes animées d’Apple Music (quand l’artiste en a une)", isOn: $prefs.motionArt)
                 Toggle("Paroles synchronisées", isOn: $prefs.showLyrics)
                 Toggle("Sur tous les écrans", isOn: $prefs.allScreens)
                 Button(music.music == nil ? "Aperçu : lance d’abord un morceau" : "Aperçu (8 s)", action: onPreview).disabled(music.music == nil)
@@ -199,9 +200,10 @@ struct SettingsView: View {
                 Toggle("Charge du Mac", isOn: $prefs.showCharging)
                 Toggle("Volume", isOn: $prefs.showVolume)
                 Toggle("Luminosité (touches F1 / F2)", isOn: $prefs.showBrightness)
-                if prefs.showBrightness && !Devices.accessibilityGranted {
+                Toggle("Remplacer les indicateurs son / luminosité de macOS", isOn: $prefs.hideSystemHUD)
+                if (prefs.showBrightness || prefs.hideSystemHUD) && !Devices.accessibilityGranted {
                     HStack {
-                        Text("macOS doit autoriser OsaWallpaper à voir les touches de luminosité (Accessibilité).")
+                        Text("macOS doit autoriser OsaWallpaper à voir les touches son et luminosité (Accessibilité).")
                             .font(.caption).foregroundStyle(.secondary)
                         Spacer()
                         Button("Autoriser") {

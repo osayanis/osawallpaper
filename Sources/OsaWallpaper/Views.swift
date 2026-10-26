@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import AVFoundation
 
 // MARK: - Aides visuelles
 
@@ -54,11 +55,15 @@ struct LockView: View {
     var body: some View {
         let h = size.height
         let show = (lock.visible || Demo.on) && prefs.lockScreen && music.music != nil
-        let full = prefs.artBackground && music.backdrop != nil
+        // Pochette animée de l'artiste (Apple Music) : elle devient tout le fond, comme sur l'iPhone.
+        let moving = prefs.motionArt && music.motion != nil && music.motionPlayer.player != nil
+        let full = moving || (prefs.artBackground && music.backdrop != nil)
         let art = min(h * 0.33, size.width * 0.3, 400)
         ZStack(alignment: .top) {
             if show {
-                if full, let b = music.backdrop {
+                if moving, let p = music.motionPlayer.player {
+                    MotionBackdrop(player: p, size: size).transition(.opacity)
+                } else if full, let b = music.backdrop {
                     LockBackdrop(image: b, palette: music.palette, size: size)
                         .id(ObjectIdentifier(b)).transition(.opacity)
                 }
@@ -72,12 +77,14 @@ struct LockView: View {
                     } else {
                         Spacer().frame(height: h * 0.27)   // l'horloge de macOS reste visible au-dessus
                     }
-                    if let m = music.music {
+                    if moving {
+                        Spacer()                      // la vidéo occupe le milieu de l'écran
+                    } else if let m = music.music {
                         ArtworkView(music: music, cursor: cursor, side: art, playing: m.playing)
                     }
                     if prefs.showLyrics { LyricView(music: music).padding(.top, h * 0.022) }
                     MusicCard(music: music, devices: devices).padding(.top, h * (prefs.showLyrics ? 0.018 : 0.05))
-                    Spacer()
+                    if moving { Spacer().frame(height: h * 0.2) } else { Spacer() }
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.97)))
             }
@@ -86,6 +93,27 @@ struct LockView: View {
         .foregroundStyle(.white)
         .animation(.easeInOut(duration: 0.5), value: show)
         .animation(.easeInOut(duration: 0.6), value: full)
+        .animation(.easeInOut(duration: 0.8), value: moving)
+        .onAppear { music.motionPlayer.setVisible(show && moving) }
+        .onChange(of: show && moving) { _, v in music.motionPlayer.setVisible(v) }
+    }
+}
+
+/// Fond vidéo (pochette animée) : plein écran, assombri en haut pour l'heure, fondu doux en bas.
+struct MotionBackdrop: View {
+    let player: AVPlayer
+    let size: CGSize
+    var body: some View {
+        ZStack {
+            MotionView(player: player)
+                .frame(width: size.width, height: size.height)
+                .mask(LockBackdrop.fade(from: 0.66, to: 0.97))
+            LinearGradient(colors: [.black.opacity(0.35), .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.34))
+            LinearGradient(colors: [.clear, .black.opacity(0.28), .clear], startPoint: UnitPoint(x: 0.5, y: 0.55), endPoint: UnitPoint(x: 0.5, y: 0.95))
+        }
+        .frame(width: size.width, height: size.height)
+        .clipped()
+        .allowsHitTesting(false)
     }
 }
 
