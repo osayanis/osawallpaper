@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var status: NSStatusItem!
     private var settings: NSWindow?
     private var onboarding: NSWindow?
+    private var gallery: NSWindow?
     private var bag = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ n: Notification) {
@@ -41,6 +42,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 15) { self.devices.show(.volume(0.56, muted: false, symbol: "speaker.wave.2.fill"), for: 3) }
             DispatchQueue.main.asyncAfter(deadline: .now() + 19) { self.devices.show(.brightness(0.72), for: 3) }
             if ProcessInfo.processInfo.environment["OSAWALLPAPER_ONBOARDING"] != nil { openOnboarding() }
+            if ProcessInfo.processInfo.environment["OSAWALLPAPER_GALLERY"] != nil { openGallery() }
+            // OSAWALLPAPER_APPLY=<fichier ou lien> : utilise ce fond tout de suite.
+            if let a = ProcessInfo.processInfo.environment["OSAWALLPAPER_APPLY"] {
+                if FileManager.default.fileExists(atPath: a) { WallpaperStore.shared.importFile(URL(fileURLWithPath: a)) }
+                else if let w = WallpaperStore.fromLink(a) { WallpaperStore.shared.apply(w) }
+            }
+            // OSAWALLPAPER_SNAP=<dossier> : l'app enregistre ses propres fenêtres en PNG (tests visuels).
+            if let dir = ProcessInfo.processInfo.environment["OSAWALLPAPER_SNAP"] {
+                Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { _ in Snap.windows(to: dir) }
+            }
         } else if ProcessInfo.processInfo.environment["OSAWALLPAPER_TOAST_TEST"] != nil {
             // test réel des pastilles (au-dessus de tout)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
@@ -97,6 +108,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settings?.makeKeyAndOrderFront(nil)
     }
 
+    @objc func openGallery() {
+        if gallery == nil {
+            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1080, height: 700),
+                             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+            w.title = "Fonds d’écran"
+            w.titlebarAppearsTransparent = true
+            w.titleVisibility = .hidden
+            w.isReleasedWhenClosed = false
+            w.appearance = NSAppearance(named: .darkAqua)
+            w.backgroundColor = NSColor(red: 0.04, green: 0.04, blue: 0.06, alpha: 1)
+            w.contentMinSize = NSSize(width: 980, height: 640)
+            w.contentView = NSHostingView(rootView: GalleryView(store: WallpaperStore.shared, prefs: prefs,
+                                                                onPreview: { [weak self] in self?.preview() }))
+            w.center()
+            gallery = w
+        }
+        if Demo.on { gallery?.orderFrontRegardless(); return }   // tests : ne vole pas le focus
+        NSApp.activate(ignoringOtherApps: true)
+        gallery?.makeKeyAndOrderFront(nil)
+    }
+
     @objc func openOnboarding() {
         if onboarding == nil {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 600),
@@ -150,7 +182,9 @@ extension AppDelegate: NSMenuDelegate {
         item("Sur l’écran verrouillé", #selector(toggleLock), on: prefs.lockScreen)
         item("Fond tiré de la pochette", #selector(toggleArt), on: prefs.artBackground)
         item("Météo dans la barre de menus", #selector(toggleWeather), on: prefs.weatherInMenuBar)
-        item(music.music == nil ? "Aperçu (lance un morceau)" : "Aperçu de l’écran verrouillé", #selector(preview), enabled: music.music != nil)
+        item("Choisir un fond d’écran…", #selector(openGallery), "f")
+        let canPreview = music.music != nil || WallpaperStore.shared.current != nil
+        item(canPreview ? "Aperçu de l’écran verrouillé" : "Aperçu (lance un morceau)", #selector(preview), enabled: canPreview)
         menu.addItem(.separator())
         item("Réglages…", #selector(openSettings), ",")
         item("Bienvenue…", #selector(openOnboarding))
@@ -162,6 +196,17 @@ extension AppDelegate: NSMenuDelegate {
         }
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quitter OsaWallpaper", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+    }
+}
+
+enum Snap {
+    static func windows(to dir: String) {
+        for w in NSApp.windows where w.isVisible {
+            guard let v = w.contentView, v.bounds.width > 0, let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { continue }
+            v.cacheDisplay(in: v.bounds, to: rep)
+            let name = w.title.isEmpty ? "win-\(Int(v.bounds.width))x\(Int(v.bounds.height))" : "gallery"
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: dir).appendingPathComponent(name + ".png"))
+        }
     }
 }
 
@@ -179,6 +224,7 @@ struct SettingsView: View {
     @ObservedObject var prefs: Prefs
     @ObservedObject var devices: Devices
     @ObservedObject var music: MusicWatcher
+    @ObservedObject var wall = WallpaperStore.shared
     var onPreview: () -> Void
     @State private var city = Prefs.shared.city
     @State private var login = LoginItem.enabled
@@ -187,13 +233,23 @@ struct SettingsView: View {
         Form {
             Section {
                 Toggle("Afficher sur l’écran verrouillé", isOn: $prefs.lockScreen)
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Fond d’écran personnalisé")
+                        Text(wall.current.map { $0.title } ?? "Aucun : la pochette du morceau").font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Choisir…") { AppDelegate.shared?.openGallery() }
+                }
+                if wall.current != nil { Toggle("Garder mon fond même pendant la musique", isOn: $prefs.wallpaperOverMusic) }
                 Toggle("Fond tiré de la pochette", isOn: $prefs.artBackground)
                 Toggle("Pochettes animées d’Apple Music (quand l’artiste en a une)", isOn: $prefs.motionArt)
                 Toggle("Paroles synchronisées", isOn: $prefs.showLyrics)
                 Toggle("Sur tous les écrans", isOn: $prefs.allScreens)
-                Button(music.music == nil ? "Aperçu : lance d’abord un morceau" : "Aperçu (8 s)", action: onPreview).disabled(music.music == nil)
+                Button(music.music == nil && wall.current == nil ? "Aperçu : lance d’abord un morceau" : "Aperçu (8 s)", action: onPreview)
+                    .disabled(music.music == nil && wall.current == nil)
             } header: { Text("Écran verrouillé") } footer: {
-                Text("Visible seulement quand ton Mac est verrouillé (⌃⌘Q) et qu’un morceau joue.").foregroundStyle(.secondary)
+                Text("Visible seulement quand ton Mac est verrouillé (⌃⌘Q), avec un morceau en cours ou ton fond personnalisé.").foregroundStyle(.secondary)
             }
             Section("Partout") {
                 Toggle("AirPods et casques (batterie, volume)", isOn: $prefs.showAirpods)

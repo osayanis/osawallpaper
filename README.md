@@ -37,6 +37,17 @@ Quand ton Mac est verrouillé et qu’un morceau joue dans **Music** ou **Spotif
 
 Dès que tu déverrouilles, tout disparaît : ton bureau reste exactement comme avant.
 
+## 🖼️ Ton propre fond d’écran
+
+Menu OsaWallpaper → **Choisir un fond d’écran…** (⌘F) ouvre une galerie avec un aperçu en direct sur une maquette de l’écran verrouillé :
+
+- **Photos** : des milliers de fonds en 1440p minimum (souvent en 4K) venus de [Wallhaven](https://wallhaven.cc), filtrés « tout public ». Tu peux chercher ou choisir un thème : nature, montagnes, espace, océan, villes, nuit, etc.
+- **Vidéos Apple** : les vidéos aériennes de l’Apple TV et de l’économiseur d’écran (Terre, paysages, villes, sous l’eau), en 1080p et en boucle.
+- **Ton lien** : colle une vidéo **YouTube** (lue en direct par le lecteur officiel, en sourdine) ou un lien direct **.mp4 / .mov / .jpg / .png**. Tu peux aussi glisser un fichier depuis ton Mac.
+- **Mes fonds** : les 40 derniers fonds utilisés, pour revenir à l’un d’eux en un clic.
+
+Sans musique, l’écran verrouillé montre ton fond avec l’heure et la météo. Quand un morceau joue, tu choisis ce qui s’affiche : la pochette de l’album ou ton fond, avec le lecteur par-dessus.
+
 ## ✨ Partout, tout le temps
 
 <p align="center">
@@ -111,6 +122,8 @@ OSAWALLPAPER_DEMO=/chemin/vers/une/image.jpg ./OsaWallpaper.app/Contents/MacOS/O
 | Luminosité | `DisplayServicesGetBrightness` (framework privé) lu 5 fois par seconde, pastille seulement après F1 / F2. |
 | Pochettes animées | Page de l’album sur music.apple.com (JSON `serialized-server-data`, vidéo `motionDetailSquare`), qualité 1080p HEVC téléchargée une fois, lue en boucle avec `AVPlayerLooper` seulement quand l’écran est verrouillé. Méthode non officielle. |
 | Indicateurs natifs | Interception des touches spéciales (`CGEventTap`), son réglé via CoreAudio, luminosité via `DisplayServicesSetBrightness`. |
+| Fonds personnalisés | Photos : API publique de Wallhaven. Vidéos Apple : catalogue public `resources-16.tar` (noms en français), vidéo téléchargée une fois. Fichiers et liens copiés dans `~/Library/Application Support/OsaWallpaper`. Vidéos lues avec `AVPlayerLooper`, seulement quand l’écran est verrouillé. |
+| YouTube | Lecteur intégré officiel (`youtube-nocookie.com`) dans une `WKWebView`, en sourdine et en boucle, créée seulement quand l’écran verrouillé est visible. Rien n’est téléchargé. |
 | Mises à jour | API GitHub Releases, archive `OsaWallpaper.zip`, signature vérifiée avec `SecStaticCode`. |
 | Météo | [Open-Meteo](https://open-meteo.com), position par IP ou ville choisie. |
 
@@ -121,6 +134,9 @@ OSAWALLPAPER_DEMO=/chemin/vers/une/image.jpg ./OsaWallpaper.app/Contents/MacOS/O
 - L’affichage sur l’écran verrouillé repose sur une **API privée** de macOS : une future version du système peut le casser.
 - La batterie des AirPods vient de `system_profiler` : elle peut mettre quelques secondes à apparaître après la connexion.
 - Les pochettes animées passent par la page web d’Apple Music, pas par une API officielle : si Apple la modifie, l’app revient simplement à la pochette fixe. Tous les albums n’en ont pas.
+- Une vidéo YouTube demande une connexion internet, et certains auteurs interdisent l’intégration hors de YouTube : l’app le détecte et te prévient.
+- Les vidéos Apple pèsent 150 à 300 Mo chacune (téléchargées une seule fois).
+- Les photos de Wallhaven appartiennent à leurs auteurs : elles sont pour ton usage personnel.
 - Spotify : pas de bouton favori (son AppleScript ne le permet pas).
 
 ---
