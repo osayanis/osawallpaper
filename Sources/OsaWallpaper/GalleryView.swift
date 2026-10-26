@@ -395,6 +395,7 @@ struct PreviewPane: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
+            DesktopOptions(prefs: prefs, kind: store.current?.kind)
             VStack(alignment: .leading, spacing: 8) {
                 Text("Quand de la musique joue").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.7))
                 Picker("", selection: $prefs.wallpaperOverMusic) {
@@ -445,6 +446,36 @@ struct PreviewPane: View {
         case .video: "Lue en boucle, sans le son, seulement quand ton Mac est verrouillé."
         case .image: w.local == nil && w.remote != nil ? "Téléchargée une fois en pleine qualité." : "Photo enregistrée sur ton Mac."
         }
+    }
+}
+
+/// « Aussi sur le bureau » et, pour une vidéo, animée ou image fixe.
+struct DesktopOptions: View {
+    @ObservedObject var prefs: Prefs
+    let kind: Wallpaper.Kind?
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle(isOn: $prefs.desktopToo) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Aussi sur le bureau").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.8))
+                    Text("Le même fond quand ton Mac est déverrouillé").font(.system(size: 10.5)).foregroundStyle(.white.opacity(0.4))
+                }
+            }
+            .toggleStyle(.switch).controlSize(.small).disabled(kind == nil)
+            if prefs.desktopToo, let kind, kind != .image {
+                Picker("", selection: $prefs.desktopAnimated) {
+                    Text("Animé").tag(true)
+                    Text("Image fixe").tag(false)
+                }
+                .pickerStyle(.segmented).labelsHidden()
+                Text(prefs.desktopAnimated
+                     ? "La vidéo tourne derrière tes fenêtres, en pause quand ton Mac est verrouillé, en veille ou en économie d’énergie."
+                     : "Une image tirée de la vidéo : aucun effort pour ton Mac.")
+                    .font(.system(size: 10.5)).foregroundStyle(.white.opacity(0.4)).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.bottom, 6)
+        .animation(.easeOut(duration: 0.2), value: prefs.desktopToo)
     }
 }
 
