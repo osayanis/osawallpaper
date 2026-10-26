@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
+import CoreImage
 
 // Fenêtre « Fonds d'écran » : une grande base de photos HD, les vidéos aériennes d'Apple,
 // un lien (YouTube, .mp4) ou un fichier du Mac. Aperçu à droite, sur une maquette de l'écran verrouillé.
@@ -59,6 +60,9 @@ final class GalleryModel: ObservableObject {
                 page = next; lastPage = r.meta.last_page
                 let seen = Set(photos.map(\.id))
                 photos += r.data.filter { !seen.contains($0.id) }
+                if Demo.on, selected == nil, let i = ProcessInfo.processInfo.environment["OSAWALLPAPER_DEMO_SELECT"].flatMap(Int.init), i < photos.count {
+                    selected = photos[i].wallpaper(PhotoNames.shared.names[photos[i].id])
+                }
             } catch {
                 if g == gen { photoError = "Impossible de charger les photos. Vérifie ta connexion, puis réessaie." }
             }
@@ -97,8 +101,7 @@ struct GalleryView: View {
         ZStack {
             Color(red: 0.04, green: 0.04, blue: 0.06)
             // l'ambiance de la fenêtre suit le fond sélectionné
-            Thumb(url: shown?.thumb, fallback: fallbackThumb(shown))
-                .blur(radius: 90).scaleEffect(1.4).opacity(0.28).saturation(1.3)
+            Ambient(url: shown?.thumb ?? fallbackThumb(shown)).opacity(0.34)
                 .animation(.easeInOut(duration: 0.6), value: shown?.id)
             HStack(spacing: 0) {
                 VStack(spacing: 0) {
@@ -315,6 +318,38 @@ struct GalleryView: View {
                 }
             }
         }
+    }
+}
+
+/// Fond d'ambiance : la miniature réduite à 96 px puis floutée une seule fois (Core Image).
+/// Bien moins coûteux qu'un flou en direct de 90 px sur toute la fenêtre.
+struct Ambient: View {
+    let url: URL?
+    @State private var image: NSImage?
+    @MainActor private static var cache: [URL: NSImage] = [:]
+
+    var body: some View {
+        Color.clear
+            .overlay { if let image { Image(nsImage: image).resizable().aspectRatio(contentMode: .fill).id(url).transition(.opacity) } }
+            .clipped()
+            .task(id: url) {
+                guard let url else { image = nil; return }
+                if let c = Self.cache[url] { image = c; return }
+                guard let (d, _) = try? await URLSession.shared.data(from: url) else { return }
+                let img = await Task.detached { Self.blurred(d) }.value
+                if let img { Self.cache[url] = img; withAnimation(.easeInOut(duration: 0.5)) { image = img } }
+            }
+    }
+
+    nonisolated static func blurred(_ d: Data) -> NSImage? {
+        guard let ci = CIImage(data: d), ci.extent.width > 0 else { return nil }
+        let small = ci.transformed(by: CGAffineTransform(scaleX: 96 / ci.extent.width, y: 96 / ci.extent.width))
+        let out = small.clampedToExtent()
+            .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 7])
+            .applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 1.35])
+            .cropped(to: small.extent)
+        guard let cg = CIContext().createCGImage(out, from: out.extent) else { return nil }
+        return NSImage(cgImage: cg, size: out.extent.size)
     }
 }
 

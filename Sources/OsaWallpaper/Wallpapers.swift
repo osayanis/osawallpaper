@@ -38,7 +38,7 @@ final class WallpaperStore: ObservableObject {
 
     static let dir: URL = {
         let d = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("OsaWallpaper/Wallpapers", isDirectory: true)
+            .appendingPathComponent(Demo.on ? "OsaWallpaper-Demo/Wallpapers" : "OsaWallpaper/Wallpapers", isDirectory: true)
         try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
         return d
     }()
@@ -250,6 +250,10 @@ enum Wallhaven {
     static let exclude = " -women -girl -anime -feet -legs -model -bikini -lingerie"
 
     static func search(_ q: String, page: Int) async throws -> Page {
+        // OSAWALLPAPER_DEMO_PHOTOS=<page.json> : photos locales (captures pour le site, photos libres de droits)
+        if Demo.on, let f = ProcessInfo.processInfo.environment["OSAWALLPAPER_DEMO_PHOTOS"] {
+            return try JSONDecoder().decode(Page.self, from: Data(contentsOf: URL(fileURLWithPath: f)))
+        }
         var c = URLComponents(string: "https://wallhaven.cc/api/v1/search")!
         c.queryItems = [
             .init(name: "q", value: q + exclude), .init(name: "categories", value: "100"), .init(name: "purity", value: "100"),
