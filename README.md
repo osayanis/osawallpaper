@@ -19,7 +19,7 @@ Et partout ailleurs, tes AirPods, ta charge, le volume, la luminosité et la mé
 <p align="center">
   <img src=".github/assets/lockscreen.png" width="900" alt="L'écran verrouillé avec OsaWallpaper">
 </p>
-<p align="center"><sub>Aperçu (mode démo) : l’interface de connexion de macOS reste visible en bas.</sub></p>
+<p align="center"><sub>Capture en mode démo (fond d’écran et connexion macOS simulés en bas) : la photo et le champ du mot de passe restent visibles.</sub></p>
 
 ---
 
@@ -28,7 +28,7 @@ Et partout ailleurs, tes AirPods, ta charge, le volume, la luminosité et la mé
 Quand ton Mac est verrouillé et qu’un morceau joue dans **Music** ou **Spotify** :
 
 - **La pochette devient le fond.** Floutée, mêlée à un dégradé de ses propres couleurs avec un grain léger, elle remplit l’écran et se fond vers le bas pour laisser visibles ta photo et le champ du mot de passe.
-- **L’heure, comme sur l’iPhone.** De grands chiffres hauts et serrés, une pointe de la couleur de la pochette, avec la date et la météo.
+- **L’heure, comme sur l’iPhone.** En SF Pro Bold aux chiffres serrés, une pointe de la couleur de la pochette, avec la date et la météo.
 - **La pochette en relief.** Elle s’incline doucement vers ta souris.
 - **Un lecteur en verre clair.** Titre, progression, favori, précédent / lecture / suivant, sortie audio.
 - **Les paroles synchronisées**, ligne par ligne (base [LRCLIB](https://lrclib.net) : les titres très confidentiels n’y sont pas toujours).
