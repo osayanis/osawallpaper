@@ -117,9 +117,9 @@ private struct WelcomeStep: View {
             Image(nsImage: Bundle.main.url(forResource: "AppIcon", withExtension: "icns").flatMap(NSImage.init(contentsOf:)) ?? NSApp.applicationIconImage)
                 .resizable().frame(width: 128, height: 128)
                 .shadow(color: .black.opacity(0.5), radius: 24, y: 14)
-                .offset(y: float ? -6 : 4)
-                .animation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true), value: float)
-                .onAppear { float = true }
+                .scaleEffect(float ? 1 : 0.6)
+                .opacity(float ? 1 : 0)
+                .onAppear { withAnimation(.spring(response: 0.7, dampingFraction: 0.6).delay(0.1)) { float = true } }
             Text("Bienvenue dans OsaWallpaper")
                 .font(.system(size: 26, weight: .bold, design: .rounded))
             Text("Quand ton Mac est verrouillé, ton écran prend les couleurs de ta musique : l’heure en verre, la pochette, les commandes et les paroles.")
