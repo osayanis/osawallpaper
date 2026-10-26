@@ -132,7 +132,7 @@ struct GalleryView: View {
             Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 38, height: 38)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Fonds d’écran").font(.system(size: 19, weight: .bold))
-                Text("Pour ton écran verrouillé").font(.system(size: 12)).foregroundStyle(.white.opacity(0.5))
+                Text("Pour ton écran verrouillé et ton bureau").font(.system(size: 12)).foregroundStyle(.white.opacity(0.5))
             }
             Spacer(minLength: 16)
             HStack(spacing: 2) {
@@ -394,8 +394,8 @@ struct PreviewPane: View {
                 Label(e, systemImage: "exclamationmark.triangle.fill").font(.system(size: 11.5)).foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Spacer(minLength: 0)
             DesktopOptions(prefs: prefs, kind: store.current?.kind)
+            Spacer(minLength: 0)
             VStack(alignment: .leading, spacing: 8) {
                 Text("Quand de la musique joue").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.7))
                 Picker("", selection: $prefs.wallpaperOverMusic) {
@@ -441,9 +441,9 @@ struct PreviewPane: View {
 
     static func note(_ w: Wallpaper) -> String {
         switch w.kind {
-        case .youtube: "Lue en direct depuis YouTube, sans le son, seulement quand ton Mac est verrouillé. Il faut une connexion internet."
+        case .youtube: "Lue en direct depuis YouTube, sans le son, seulement quand on peut la voir. Il faut une connexion internet."
         case .video where w.id.hasPrefix("aerial-"): "Vidéo 1080p lue en boucle, sans le son. Téléchargée une seule fois (150 à 300 Mo)."
-        case .video: "Lue en boucle, sans le son, seulement quand ton Mac est verrouillé."
+        case .video: "Lue en boucle, sans le son, seulement quand on peut la voir."
         case .image: w.local == nil && w.remote != nil ? "Téléchargée une fois en pleine qualité." : "Photo enregistrée sur ton Mac."
         }
     }
@@ -456,12 +456,17 @@ struct DesktopOptions: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Toggle(isOn: $prefs.desktopToo) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Aussi sur le bureau").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.8))
-                    Text("Le même fond quand ton Mac est déverrouillé").font(.system(size: 10.5)).foregroundStyle(.white.opacity(0.4))
+                HStack(spacing: 10) {
+                    Image(systemName: "menubar.dock.rectangle").font(.system(size: 16)).foregroundStyle(.white.opacity(0.75))
+                        .frame(width: 30, height: 30).background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Aussi sur le bureau").font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(0.9))
+                        Text(kind == nil ? "Choisis d’abord un fond" : "Le même fond quand ton Mac est déverrouillé")
+                            .font(.system(size: 11)).foregroundStyle(.white.opacity(0.45))
+                    }
                 }
             }
-            .toggleStyle(.switch).controlSize(.small).disabled(kind == nil)
+            .toggleStyle(.switch).disabled(kind == nil)
             if prefs.desktopToo, let kind, kind != .image {
                 Picker("", selection: $prefs.desktopAnimated) {
                     Text("Animé").tag(true)
@@ -474,7 +479,10 @@ struct DesktopOptions: View {
                     .font(.system(size: 10.5)).foregroundStyle(.white.opacity(0.4)).fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(.bottom, 6)
+        .padding(12)
+        .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.08)))
+        .opacity(kind == nil ? 0.55 : 1)
         .animation(.easeOut(duration: 0.2), value: prefs.desktopToo)
     }
 }
