@@ -14,6 +14,7 @@ final class MusicWatcher: ObservableObject {
     @Published var music: MusicInfo?
     @Published var artwork: NSImage?
     @Published var backdrop: NSImage?          // pochette floutée pour le fond d'écran
+    @Published var palette: [Color] = []       // 9 couleurs (grille 3×3) tirées de la pochette → dégradé animé
     @Published var accent: Color = Color(red: 0.62, green: 0.75, blue: 1.0)
     @Published var lyrics: [LyricLine] = []
     @Published var sampledAt = Date()          // instant de lecture de `position` → interpolation
@@ -36,7 +37,7 @@ final class MusicWatcher: ObservableObject {
         sampledAt = Date()
         lyrics = (0..<40).map { LyricLine(t: 55 + Double($0) * 3, text: ["Et la nuit ne finit jamais", "On danse sous les étoiles", "La mer nous appelle encore"][$0 % 3]) }
         if let img = NSImage(contentsOfFile: artPath) {
-            artwork = img; backdrop = Self.blurred(img)
+            artwork = img; backdrop = Self.blurred(img); palette = Self.palette(img)
             if let c = Self.vibrantColor(img) { accent = c }
         }
     }
@@ -56,7 +57,7 @@ final class MusicWatcher: ObservableObject {
             let out = Shell.osa(Self.script(), timeout: 4)?.trimmingCharacters(in: .whitespacesAndNewlines)
             guard let out, !out.isEmpty, out != "none" else {
                 DispatchQueue.main.async {
-                    if self.music != nil { self.music = nil; self.artwork = nil; self.backdrop = nil; self.lyrics = [] }
+                    if self.music != nil { self.music = nil; self.artwork = nil; self.backdrop = nil; self.palette = []; self.lyrics = [] }
                     self.key = ""
                 }
                 return
@@ -124,10 +125,11 @@ final class MusicWatcher: ObservableObject {
         let apply: (NSImage) -> Void = { img in
             let col = Self.vibrantColor(img)
             let blur = Self.blurred(img)
+            let pal = Self.palette(img)
             DispatchQueue.main.async {
                 guard self.key == k else { return }
                 withAnimation(.easeInOut(duration: 0.8)) {
-                    self.artwork = img; self.backdrop = blur
+                    self.artwork = img; self.backdrop = blur; self.palette = pal
                     if let col { self.accent = col }
                 }
             }
@@ -292,6 +294,32 @@ final class MusicWatcher: ObservableObject {
         guard let b = best else { return nil }
         // Éclaircie : la couleur sert de teinte sur fond sombre.
         return Color(red: 0.45 + b.0 * 0.55, green: 0.45 + b.1 * 0.55, blue: 0.45 + b.2 * 0.55)
+    }
+
+    /// Les couleurs de la pochette sur une grille 3×3 (réduction à 3×3 pixels),
+    /// plus saturées et assombries en haut pour garder l'horloge lisible.
+    static func palette(_ img: NSImage) -> [Color] {
+        guard let cg = img.cgImage(forProposedRect: nil, context: nil, hints: nil),
+              let ctx = CGContext(data: nil, width: 3, height: 3, bitsPerComponent: 8, bytesPerRow: 12,
+                                  space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return [] }
+        ctx.interpolationQuality = .high
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: 3, height: 3))
+        guard let px = ctx.data?.assumingMemoryBound(to: UInt8.self) else { return [] }
+        var out: [Color] = []
+        for row in 0..<3 {            // la ligne 0 du tampon = le haut de l'image
+            for col in 0..<3 {
+                let i = (row * 3 + col) * 4
+                let c = NSColor(srgbRed: CGFloat(px[i]) / 255, green: CGFloat(px[i + 1]) / 255, blue: CGFloat(px[i + 2]) / 255, alpha: 1)
+                var h: CGFloat = 0, sat: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+                c.getHue(&h, saturation: &sat, brightness: &b, alpha: &a)
+                let dark: CGFloat = row == 0 ? 0.7 : row == 1 ? 0.85 : 0.75
+                // léger décalage de teinte d'une case à l'autre : du relief même sur une pochette unie
+                let shift = CGFloat(col - 1) * 0.035 + CGFloat(row - 1) * 0.02
+                let hue = (h + shift).truncatingRemainder(dividingBy: 1) + (h + shift < 0 ? 1 : 0)
+                out.append(Color(hue: hue, saturation: min(1, sat * 1.35 + 0.08), brightness: min(0.9, max(0.14, b * dark))))
+            }
+        }
+        return out
     }
 
     /// Pochette très floutée et légèrement assombrie, calculée une seule fois par morceau.

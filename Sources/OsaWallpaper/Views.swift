@@ -40,27 +40,28 @@ struct LockView: View {
         let h = size.height
         let show = (lock.visible || Demo.on) && prefs.lockScreen && music.music != nil
         let full = prefs.artBackground && music.backdrop != nil
-        let art = min(h * 0.25, size.width * 0.26, 300)
+        let art = min(h * 0.33, size.width * 0.3, 400)
         ZStack(alignment: .top) {
             if show {
                 if full, let b = music.backdrop {
-                    backdrop(b).id(ObjectIdentifier(b)).transition(.opacity)
+                    LockBackdrop(image: b, palette: music.palette, size: size)
+                        .id(ObjectIdentifier(b)).transition(.opacity)
                 }
                 VStack(spacing: 0) {
                     if full {
                         // Le fond recouvre l'horloge de macOS : on affiche la nôtre, en verre.
-                        Spacer().frame(height: topInset + h * 0.045)
+                        Spacer().frame(height: topInset + h * 0.035)
                         InfoRow(devices: devices, prefs: prefs)
-                        ClockView(size: h * 0.15, tint: music.accent).padding(.top, -h * 0.006)
-                        Spacer().frame(height: h * 0.025)
+                        ClockView(size: h * 0.135, tint: music.accent).padding(.top, -h * 0.006)
+                        Spacer().frame(height: h * 0.02)
                     } else {
-                        Spacer().frame(height: h * 0.30)   // l'horloge de macOS reste visible au-dessus
+                        Spacer().frame(height: h * 0.27)   // l'horloge de macOS reste visible au-dessus
                     }
                     if let m = music.music {
                         ArtworkView(music: music, cursor: cursor, side: art, playing: m.playing)
                     }
-                    MusicCard(music: music, devices: devices).padding(.top, h * 0.03)
-                    if prefs.showLyrics { LyricView(music: music).padding(.top, 12) }
+                    if prefs.showLyrics { LyricView(music: music).padding(.top, h * 0.022) }
+                    MusicCard(music: music, devices: devices).padding(.top, h * (prefs.showLyrics ? 0.018 : 0.05))
                     Spacer()
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.97)))
@@ -71,39 +72,84 @@ struct LockView: View {
         .animation(.easeInOut(duration: 0.5), value: show)
         .animation(.easeInOut(duration: 0.6), value: full)
     }
+}
 
-    /// Pochette floutée en plein écran ; le bas redevient transparent pour laisser
-    /// voir la photo de session et le champ du mot de passe de macOS.
-    private func backdrop(_ b: NSImage) -> some View {
+/// Fond de l'écran verrouillé : la pochette floutée, un dégradé « maillé » de ses
+/// couleurs qui dérive lentement, un grain léger et un vignettage. Le bas redevient
+/// transparent pour laisser voir la photo de session et le champ du mot de passe.
+struct LockBackdrop: View {
+    let image: NSImage
+    let palette: [Color]
+    let size: CGSize
+
+    var body: some View {
         ZStack {
-            Image(nsImage: b).resizable().aspectRatio(contentMode: .fill)
+            Image(nsImage: image).resizable().aspectRatio(contentMode: .fill)
                 .frame(width: size.width, height: size.height).clipped()
+                .scaleEffect(1.15)
+            if palette.count == 9 { mesh.opacity(0.62) }
+            // lumière douce derrière la pochette
+            RadialGradient(colors: [.white.opacity(0.10), .clear], center: UnitPoint(x: 0.5, y: 0.5), startRadius: 0, endRadius: size.height * 0.5)
+            Image(nsImage: Noise.image).resizable(resizingMode: .tile).opacity(0.05).blendMode(.overlay)
+            RadialGradient(colors: [.clear, .black.opacity(0.45)], center: .center, startRadius: size.height * 0.35, endRadius: size.width * 0.75)
             LinearGradient(stops: [
-                .init(color: .black.opacity(0.35), location: 0),
-                .init(color: .black.opacity(0.05), location: 0.4),
-                .init(color: .black.opacity(0.15), location: 0.75),
+                .init(color: .black.opacity(0.30), location: 0),
+                .init(color: .clear, location: 0.32),
+                .init(color: .clear, location: 0.7),
+                .init(color: .black.opacity(0.25), location: 1),
             ], startPoint: .top, endPoint: .bottom)
         }
+        .frame(width: size.width, height: size.height)
+        .clipped()
         .mask(LinearGradient(stops: [
             .init(color: .black, location: 0),
-            .init(color: .black, location: 0.66),
-            .init(color: .clear, location: 0.86),
+            .init(color: .black, location: 0.74),
+            .init(color: .clear, location: 0.93),
         ], startPoint: .top, endPoint: .bottom))
     }
+
+    // Fixe : un dégradé animé coûtait 7 à 10 % de CPU en continu.
+    @ViewBuilder private var mesh: some View {
+        if #available(macOS 15, *) {
+            MeshGradient(width: 3, height: 3, points: [
+                [0, 0], [0.55, 0], [1, 0],
+                [0, 0.42], [0.46, 0.55], [1, 0.48],
+                [0, 1], [0.5, 1], [1, 1],
+            ], colors: palette, smoothsColors: true)
+        } else {
+            LinearGradient(colors: [palette[1], palette[4], palette[7]], startPoint: .top, endPoint: .bottom)
+        }
+    }
+}
+
+/// Grain fin généré une fois (évite l'aspect « plastique » des grands dégradés).
+enum Noise {
+    static let image: NSImage = {
+        let n = 160
+        let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: n, pixelsHigh: n, bitsPerSample: 8, samplesPerPixel: 1,
+                                   hasAlpha: false, isPlanar: false, colorSpaceName: .deviceWhite, bytesPerRow: n, bitsPerPixel: 8)!
+        let p = rep.bitmapData!
+        var x: UInt32 = 2463534242
+        for i in 0..<(n * n) { x ^= x << 13; x ^= x >> 17; x ^= x << 5; p[i] = UInt8(truncatingIfNeeded: 90 + Int(x % 76)) }
+        let img = NSImage(size: NSSize(width: n, height: n)); img.addRepresentation(rep)
+        return img
+    }()
 }
 
 // MARK: - Notification (partout, au-dessus de tout)
 
 struct ToastHost: View {
     @ObservedObject var devices: Devices
+    @ObservedObject var target: ToastTarget
+    let display: CGDirectDisplayID
     var body: some View {
         ZStack(alignment: .top) {
-            if let t = devices.toast {
+            if let t = devices.toast, target.display == display {
                 ToastView(toast: t)
-                    .padding(.top, 8)
+                    .padding(.top, 6)
                     .transition(.asymmetric(
-                        insertion: .move(edge: .top).combined(with: .opacity).combined(with: .scale(scale: 0.7, anchor: .top)),
-                        removal: .opacity.combined(with: .scale(scale: 0.9, anchor: .top))))
+                        insertion: .move(edge: .top).combined(with: .opacity).combined(with: .scale(scale: 0.6, anchor: .top)),
+                        removal: .opacity.combined(with: .scale(scale: 0.85, anchor: .top))))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -373,34 +419,31 @@ struct ToastView: View {
     let toast: Toast
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 10) {
             switch toast {
             case .headphones(let h, let vol):
-                Image(systemName: HeadphoneGlyph.symbol(h.name)).font(.system(size: 24)).frame(width: 34)
-                Text(h.name).font(.system(size: 15, weight: .semibold)).lineLimit(1)
-                Spacer(minLength: 10)
+                Image(systemName: HeadphoneGlyph.symbol(h.name)).font(.system(size: 16)).frame(width: 22)
+                Text(h.name).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
+                Spacer(minLength: 6)
                 if let v = vol {
-                    HStack(spacing: 6) {
-                        Image(systemName: "speaker.wave.2.fill").font(.system(size: 11)).foregroundStyle(.white.opacity(0.6))
-                        Capsule().fill(.white.opacity(0.2)).frame(width: 60, height: 5)
-                            .overlay(alignment: .leading) { Capsule().fill(.white).frame(width: 60 * CGFloat(v), height: 5) }
-                    }
+                    Capsule().fill(.white.opacity(0.2)).frame(width: 38, height: 4)
+                        .overlay(alignment: .leading) { Capsule().fill(.white).frame(width: 38 * CGFloat(v), height: 4) }
                 }
                 if let l = HeadphoneGlyph.level(h) { Ring(level: l) }
             case .charging(let p):
-                Image(systemName: "bolt.fill").font(.system(size: 22)).foregroundStyle(.yellow)
+                Image(systemName: "bolt.fill").font(.system(size: 14)).foregroundStyle(.yellow)
                     .symbolEffect(.bounce, value: p)
-                    .frame(width: 34)
-                Text("En charge").font(.system(size: 15, weight: .semibold))
-                Spacer(minLength: 10)
-                Text("\(p) %").font(.system(size: 15, weight: .semibold).monospacedDigit()).foregroundStyle(p >= 20 ? .green : .orange)
+                    .frame(width: 22)
+                Text("En charge").font(.system(size: 12.5, weight: .semibold))
+                Spacer(minLength: 6)
+                Text("\(p) %").font(.system(size: 12.5, weight: .semibold).monospacedDigit()).foregroundStyle(p >= 20 ? .green : .orange)
                 Ring(level: p)
             }
         }
-        .padding(.horizontal, 20)
-        .frame(width: 340, height: 60)
+        .padding(.leading, 14).padding(.trailing, 10)
+        .frame(width: 236, height: 40)
         .background(Capsule().fill(.black))
-        .shadow(color: .black.opacity(0.35), radius: 24, y: 10)
+        .shadow(color: .black.opacity(0.3), radius: 12, y: 5)
     }
 }
 
@@ -410,12 +453,12 @@ struct Ring: View {
     var body: some View {
         let c: Color = level >= 20 ? .green : .orange
         ZStack {
-            Circle().stroke(c.opacity(0.25), lineWidth: 4)
+            Circle().stroke(c.opacity(0.25), lineWidth: 3)
             Circle().trim(from: 0, to: shown ? CGFloat(level) / 100 : 0)
-                .stroke(c, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                .stroke(c, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 .rotationEffect(.degrees(-90))
         }
-        .frame(width: 26, height: 26)
+        .frame(width: 18, height: 18)
         .help("\(level) %")
         .onAppear { withAnimation(.easeOut(duration: 0.9).delay(0.15)) { shown = true } }
     }
