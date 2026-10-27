@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var gallery: NSWindow?
     private var desktop: DesktopWallpaper?
     private var awake: ScreenAwake!
+    private var mascot: MenuMascot?
     private var bag = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ n: Notification) {
@@ -108,32 +109,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // MARK: Barre de menus (icône + météo)
+    // MARK: Barre de menus (la mascotte qui tourne ; la météo est dans le menu)
     private func buildStatusItem() {
         status = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         let menu = NSMenu()
         menu.delegate = self
         status.menu = menu
-        devices.$weather.combineLatest(prefs.$weatherInMenuBar).receive(on: RunLoop.main)
-            .sink { [weak self] w, on in self?.updateStatusButton(w, on) }.store(in: &bag)
-    }
-
-    private func updateStatusButton(_ w: Weather?, _ on: Bool) {
-        guard let b = status.button else { return }
-        if on, let w {
-            let cfg = NSImage.SymbolConfiguration(paletteColors: [.white, .systemYellow])
-                .applying(.init(pointSize: 13, weight: .medium))
-            b.image = NSImage(systemSymbolName: Devices.symbol(w), accessibilityDescription: "Météo")?.withSymbolConfiguration(cfg)
-            b.image?.isTemplate = false
-            b.imagePosition = .imageLeading
-            b.title = " \(w.temp)°"
-            b.toolTip = w.city.isEmpty ? "OsaWallpaper" : "\(w.city) · OsaWallpaper"
-        } else {
-            b.image = NSImage(systemSymbolName: "photo.on.rectangle.angled", accessibilityDescription: "OsaWallpaper")
-            b.image?.isTemplate = true
-            b.title = ""
-            b.toolTip = "OsaWallpaper"
-        }
+        if let b = status.button { mascot = MenuMascot(button: b) }
     }
 
     // MARK: Fenêtres
@@ -376,7 +358,6 @@ struct SettingsView: View {
                         }
                     }
                 }
-                Toggle("Météo dans la barre de menus", isOn: $prefs.weatherInMenuBar)
                 Toggle("Météo sur l’écran verrouillé", isOn: $prefs.showWeather)
             }
             Section {

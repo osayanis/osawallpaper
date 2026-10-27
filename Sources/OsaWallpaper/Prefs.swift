@@ -22,14 +22,13 @@ final class Prefs: ObservableObject {
     @Published var desktopAnimated: Bool { didSet { d.set(desktopAnimated, forKey: "desktopAnimated") } }  // vidéo animée sur le bureau
     @Published var allScreens: Bool { didSet { d.set(allScreens, forKey: "allScreens") } }
     @Published var lockScreen: Bool { didSet { d.set(lockScreen, forKey: "lockScreen") } }        // affichage sur l'écran verrouillé
-    @Published var weatherInMenuBar: Bool { didSet { d.set(weatherInMenuBar, forKey: "weatherInMenuBar") } }
     @Published var onboarded: Bool { didSet { d.set(onboarded, forKey: "onboarded") } }
     @Published var city: String { didSet { d.set(city, forKey: "city") } }   // vide = position approximative (IP)
 
     private init() {
         d.register(defaults: [
             "artBackground": true, "showWeather": true, "showLyrics": true,
-            "showAirpods": true, "showCharging": true, "showVolume": true, "showBrightness": true, "autoUpdate": true, "motionArt": true, "hideSystemHUD": true, "wallpaperOverMusic": false, "lockFullScreen": false, "lockAwakeMinutes": 0, "desktopToo": false, "desktopAnimated": true, "allScreens": true, "lockScreen": true, "weatherInMenuBar": true, "onboarded": false,
+            "showAirpods": true, "showCharging": true, "showVolume": true, "showBrightness": true, "autoUpdate": true, "motionArt": true, "hideSystemHUD": true, "wallpaperOverMusic": false, "lockFullScreen": false, "lockAwakeMinutes": 0, "desktopToo": false, "desktopAnimated": true, "allScreens": true, "lockScreen": true, "onboarded": false,
         ])
         artBackground = d.bool(forKey: "artBackground")
         showWeather = d.bool(forKey: "showWeather")
@@ -48,7 +47,6 @@ final class Prefs: ObservableObject {
         desktopAnimated = d.bool(forKey: "desktopAnimated")
         allScreens = d.bool(forKey: "allScreens")
         lockScreen = d.bool(forKey: "lockScreen")
-        weatherInMenuBar = d.bool(forKey: "weatherInMenuBar")
         onboarded = d.bool(forKey: "onboarded")
         city = d.string(forKey: "city") ?? ""
     }

@@ -128,7 +128,7 @@ private struct WelcomeStep: View {
             VStack(spacing: 10) {
                 Feature(icon: "lock.fill", tint: .blue, title: "Écran verrouillé", text: "Pochette, lecteur et paroles, sur tous tes écrans.")
                 Feature(icon: "airpodspro", tint: .green, title: "AirPods et charge, partout", text: "Une pastille avec la batterie dès qu’ils se connectent.")
-                Feature(icon: "cloud.sun.fill", tint: .yellow, title: "La météo, en haut", text: "La température dans la barre de menus.")
+                Feature(icon: "cloud.sun.fill", tint: .yellow, title: "La météo", text: "Sur l’écran verrouillé et dans le menu de la mascotte, en haut.")
             }
             .padding(.top, 6)
         }
