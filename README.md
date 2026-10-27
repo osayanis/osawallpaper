@@ -57,7 +57,7 @@ Menu OsaWallpaper → **Ouvrir OsaWallpaper…** ouvre une galerie avec un aper�
 
 **Réglages** : un onglet de la fenêtre, à droite de « Mes fonds » (menu → Réglages…, ⌘,).
 
-**L’écran reste allumé** : macOS éteint très vite l’écran d’un Mac verrouillé. OsaWallpaper le garde allumé 5 minutes après ta dernière action (réglable : comme macOS, 1, 2, 5, 10 ou 30 minutes), puis laisse macOS l’éteindre. Jamais en mode économie d’énergie.
+**Écran allumé plus longtemps** : macOS éteint très vite l’écran d’un Mac verrouillé. Par défaut OsaWallpaper ne change rien ; dans les réglages, tu peux le garder allumé 1, 2, 5, 10 ou 30 minutes après ta dernière action, puis macOS l’éteint. Jamais en mode économie d’énergie.
 
 **Dans le Dock seulement quand tu t’en sers** : l’icône apparaît quand la fenêtre est ouverte. Quand tu les fermes (ou ⌘Q), elle disparaît et une pastille « App mise en arrière-plan » le dit : l’app continue de tourner pour l’écran verrouillé. Pour la quitter vraiment : ⌥⌘Q ou le menu de la barre des menus.
 

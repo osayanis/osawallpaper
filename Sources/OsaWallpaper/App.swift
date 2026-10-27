@@ -358,7 +358,7 @@ struct SettingsView: View {
                 Button(music.music == nil && wall.current == nil ? "Aperçu : lance d’abord un morceau" : "Aperçu (8 s)", action: onPreview)
                     .disabled(music.music == nil && wall.current == nil)
             } header: { Text("Écran verrouillé") } footer: {
-                Text("Visible seulement quand ton Mac est verrouillé (⌃⌘Q), avec un morceau en cours ou ton fond personnalisé. L’écran reste allumé le temps choisi après ta dernière action, puis macOS l’éteint (jamais en mode économie d’énergie).").foregroundStyle(.secondary)
+                Text("Visible seulement quand ton Mac est verrouillé (⌃⌘Q), avec un morceau en cours ou ton fond personnalisé. « Écran allumé » : garde l’écran allumé le temps choisi après ta dernière action, puis macOS l’éteint (jamais en mode économie d’énergie).").foregroundStyle(.secondary)
             }
             Section("Partout") {
                 Toggle("AirPods et casques (batterie, volume)", isOn: $prefs.showAirpods)
