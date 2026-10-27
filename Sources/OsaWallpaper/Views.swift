@@ -70,9 +70,11 @@ struct LockView: View {
                 if custom {
                     CustomBackdrop(store: wall, size: size, fullScreen: prefs.lockFullScreen, screen: screenFrame).id(wall.current?.id).transition(.opacity)
                 } else if moving, let p = music.motionPlayer.player {
-                    MotionBackdrop(player: p, size: size).transition(.opacity)
+                    MotionBackdrop(player: p, size: size, fullScreen: prefs.lockFullScreen)
+                        .modifier(FullLockCover(on: prefs.lockFullScreen, size: size, screen: screenFrame)).transition(.opacity)
                 } else if full, let b = music.backdrop {
-                    LockBackdrop(image: b, palette: music.palette, size: size)
+                    LockBackdrop(image: b, palette: music.palette, size: size, fullScreen: prefs.lockFullScreen)
+                        .modifier(FullLockCover(on: prefs.lockFullScreen, size: size, screen: screenFrame))
                         .id(ObjectIdentifier(b)).transition(.opacity)
                 }
                 VStack(spacing: 0) {
@@ -91,8 +93,8 @@ struct LockView: View {
                         } else if let m = music.music {
                             ArtworkView(music: music, cursor: cursor, side: art, playing: m.playing)
                         }
-                        if prefs.showLyrics { LyricView(music: music).padding(.top, h * 0.022) }
-                        MusicCard(music: music, devices: devices).padding(.top, h * (prefs.showLyrics ? 0.018 : 0.05))
+                        if prefs.showLyrics { LyricView(music: music).padding(.top, h * 0.011) }
+                        MusicCard(music: music, devices: devices).padding(.top, h * (prefs.showLyrics ? 0.006 : 0.05))
                         if moving || custom { Spacer().frame(height: h * 0.2) } else { Spacer() }
                     } else {
                         Spacer()
@@ -168,7 +170,8 @@ struct CustomBackdrop: View {
     }
 }
 
-/// Fond vidéo (pochette animée) : plein écran, assombri en haut pour l'heure, fondu doux en bas.
+/// Fond vidéo (pochette animée) : plein écran, assombri en haut pour l'heure, fondu doux en bas
+/// (sauf en plein écran : FullLockCover s'occupe de la connexion).
 struct MotionBackdrop: View {
     let player: AVPlayer
     let size: CGSize
@@ -177,7 +180,7 @@ struct MotionBackdrop: View {
         ZStack {
             MotionView(player: player)
                 .frame(width: size.width, height: size.height)
-                .lockMask(fullScreen, from: 0.66, to: 0.97, size: size)
+                .bottomFade(!fullScreen, from: 0.66, to: 0.97)
             LinearGradient(colors: [.black.opacity(0.35), .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.34))
             LinearGradient(colors: [.clear, .black.opacity(0.28), .clear], startPoint: UnitPoint(x: 0.5, y: 0.55), endPoint: UnitPoint(x: 0.5, y: 0.95))
         }
@@ -192,6 +195,35 @@ extension View {
     /// plein écran avec seulement une fenêtre douce sur la connexion de macOS.
     @ViewBuilder func lockMask(_ fullScreen: Bool, from a: CGFloat, to b: CGFloat, size: CGSize, open: Bool = true) -> some View {
         if fullScreen { mask(LoginHole(size: size, open: open)) } else { mask(LockBackdrop.fade(from: a, to: b)) }
+    }
+    /// Fondu vers le bas, ou rien (le fond couvre tout).
+    @ViewBuilder func bottomFade(_ on: Bool, from a: CGFloat, to b: CGFloat) -> some View {
+        if on { mask(LockBackdrop.fade(from: a, to: b)) } else { self }
+    }
+}
+
+/// Pochette en plein écran : elle couvre tout. Ta photo et ton nom sont redessinés à leur place
+/// (lue par l'Accessibilité), seul le champ du mot de passe reste ouvert ; sans l'Accessibilité,
+/// une zone douce s'ouvre sur la connexion. Sous la pochette, macOS a le même fond (Desktop.swift).
+struct FullLockCover: ViewModifier {
+    let on: Bool
+    let size: CGSize
+    let screen: CGRect
+    @ObservedObject private var hole = LockHole.shared
+    @ObservedObject private var login = LoginUI.shared
+    func body(content: Content) -> some View {
+        if on {
+            let replica = login.layout
+            ZStack {
+                content.modifier(BackdropMask(fullScreen: true, size: size, open: hole.open,
+                                              field: replica?.field.map { LoginUI.local($0, in: screen) }, replica: replica != nil))
+                if let replica { LoginReplica(layout: replica, screen: screen, size: size) }
+            }
+            .frame(width: size.width, height: size.height)
+            .allowsHitTesting(false)
+        } else {
+            content
+        }
     }
 }
 
@@ -292,13 +324,13 @@ struct LockBackdrop: View {
                     .scaleEffect(1.15)
                 RadialGradient(colors: [.white.opacity(0.10), .clear], center: UnitPoint(x: 0.5, y: 0.5), startRadius: 0, endRadius: size.height * 0.5)
             }
-            .lockMask(fullScreen, from: 0.5, to: 0.84, size: size)
+            .bottomFade(!fullScreen, from: 0.5, to: 0.84)
             // 2) …puis ses couleurs, plus bas : le passage vers ton fond d'écran se fait en douceur.
-            if palette.count == 9 { mesh.opacity(0.7).lockMask(fullScreen, from: 0.6, to: 0.99, size: size) }
+            if palette.count == 9 { mesh.opacity(0.7).bottomFade(!fullScreen, from: 0.6, to: 0.99) }
             Image(nsImage: Noise.image).resizable(resizingMode: .tile).opacity(0.05).blendMode(.overlay)
-                .lockMask(fullScreen, from: 0.6, to: 0.95, size: size)
+                .bottomFade(!fullScreen, from: 0.6, to: 0.95)
             RadialGradient(colors: [.clear, .black.opacity(0.4)], center: UnitPoint(x: 0.5, y: 0.4), startRadius: size.height * 0.35, endRadius: size.width * 0.75)
-                .lockMask(fullScreen, from: 0.55, to: 0.9, size: size)
+                .bottomFade(!fullScreen, from: 0.55, to: 0.9)
             LinearGradient(colors: [.black.opacity(0.3), .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.32))
         }
         .frame(width: size.width, height: size.height)
@@ -625,19 +657,25 @@ struct LyricView: View {
     @ObservedObject var music: MusicWatcher
     var body: some View {
         // Réveil uniquement aux instants où une nouvelle ligne commence (pas de sondage).
-        let now = Date(), pos = music.position(at: now)
+        // Position de ce qu'on entend (le son arrive plus tard dans un casque Bluetooth), avec une
+        // légère avance pour que la ligne soit là quand elle commence.
+        let lead = 0.12
+        let now = Date(), pos = music.heardPosition(at: now)
         let dates = music.music?.playing == true
-            ? [now] + music.lyrics.filter { $0.t > pos }.prefix(80).map { now.addingTimeInterval($0.t - pos - 0.2) }
+            ? [now] + music.lyrics.filter { $0.t > pos + lead }.prefix(80).map { now.addingTimeInterval($0.t - pos - lead) }
             : [now]
         TimelineView(.explicit(dates)) { tl in
-            let p = music.position(at: tl.date) + 0.25
+            let p = music.heardPosition(at: tl.date) + lead + 0.01
             let line = music.lyrics.last { $0.t <= p }?.text ?? ""
+            // Hauteur fixe (deux lignes) : le lecteur en dessous ne bouge pas selon la longueur des paroles.
             Text(line)
                 .font(.system(size: 17, weight: .bold, design: .rounded))
                 .foregroundStyle(.white.opacity(0.92))
                 .shadow(color: .black.opacity(0.35), radius: 8, y: 2)
                 .multilineTextAlignment(.center)
-                .frame(maxWidth: 520, minHeight: 24)
+                .lineLimit(2).minimumScaleFactor(0.8)
+                .frame(maxWidth: 520)
+                .frame(height: 46)
                 .id(line)
                 .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 10)), removal: .opacity.combined(with: .offset(y: -10))))
                 .animation(.easeOut(duration: 0.35), value: line)

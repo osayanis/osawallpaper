@@ -400,6 +400,8 @@ struct PreviewPane: View {
                             ? "La vidéo tourne partout ; ta photo de session, ton nom et le champ du mot de passe restent visibles. Ton bureau ne change pas."
                             : "Ta photo de session, ton nom et le mot de passe restent visibles ; autour d’eux, la vidéo se fond dans une image fixe. Ton bureau ne change pas.")
                         .font(.system(size: 10.5)).foregroundStyle(.white.opacity(0.4)).fixedSize(horizontal: false, vertical: true)
+                    Text("Pendant la musique, la pochette couvre aussi tout l’écran.")
+                        .font(.system(size: 10.5)).foregroundStyle(.white.opacity(0.4)).fixedSize(horizontal: false, vertical: true)
                     if store.current.map({ $0.kind != .image }) == true && !AXIsProcessTrusted() {
                         HStack(alignment: .top, spacing: 8) {
                             Text("Pour que la vidéo tourne aussi autour de ta photo de session, autorise l’Accessibilité.")

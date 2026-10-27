@@ -32,7 +32,7 @@ Quand ton Mac est verrouillé et qu’un morceau joue dans **Music** ou **Spotif
 - **L’heure, comme sur l’iPhone.** En SF Pro Bold aux chiffres serrés, une pointe de la couleur de la pochette, avec la date et la météo.
 - **La pochette en relief.** Elle s’incline doucement vers ta souris.
 - **Un lecteur en verre clair.** Titre, progression, favori, précédent / lecture / suivant, sortie audio.
-- **Les paroles synchronisées**, ligne par ligne (base [LRCLIB](https://lrclib.net) : les titres très confidentiels n’y sont pas toujours).
+- **Les paroles synchronisées**, ligne par ligne (base [LRCLIB](https://lrclib.net) : les titres très confidentiels n’y sont pas toujours). Elles tiennent compte du retard du son dans les AirPods et casques Bluetooth, et le lecteur ne bouge pas quand une ligne est plus longue.
 - **Sur tous tes écrans**, y compris les écrans externes.
 
 Dès que tu déverrouilles, tout disparaît : ton bureau reste exactement comme avant.
@@ -53,7 +53,7 @@ Menu OsaWallpaper → **Ouvrir OsaWallpaper…** ouvre une galerie avec un aper�
 
 **Aussi sur le bureau** (dans la galerie ou les réglages) : le même fond devient celui de ton Mac déverrouillé. Pour une vidéo, tu choisis **Animé** (elle tourne en boucle derrière tes fenêtres, en pause dès que le Mac est verrouillé, en veille ou en économie d’énergie) ou **Image fixe** (une image tirée de la vidéo, zéro CPU). Ton fond d’origine est remis quand tu coupes l’option.
 
-**Fondu ou plein écran** : par défaut ton fond se fond vers le bas pour laisser voir ta photo de session et le champ du mot de passe. En **plein écran**, il couvre tout l’écran ; ta photo de session, ton nom et le champ du mot de passe restent visibles par-dessus, sans trou (pour ça, pendant que le Mac est verrouillé seulement, la même image est posée en fond macOS ; ton bureau retrouve son fond au déverrouillage). Pour une vidéo, OsaWallpaper redessine ta photo et ton nom à leur place exacte (lue par l’Accessibilité) : la vidéo tourne partout, seul le champ du mot de passe reste ouvert. Quand c’est la pochette d’un morceau qui s’affiche, ton fond d’origine reste en place sous son fondu.
+**Fondu ou plein écran** : par défaut ton fond se fond vers le bas pour laisser voir ta photo de session et le champ du mot de passe. En **plein écran**, il couvre tout l’écran ; ta photo de session, ton nom et le champ du mot de passe restent visibles par-dessus, sans trou (pour ça, pendant que le Mac est verrouillé seulement, la même image est posée en fond macOS ; ton bureau retrouve son fond au déverrouillage). Pour une vidéo, OsaWallpaper redessine ta photo et ton nom à leur place exacte (lue par l’Accessibilité) : la vidéo tourne partout, seul le champ du mot de passe reste ouvert. En plein écran, la pochette d’un morceau couvre elle aussi tout l’écran, avec ta photo et ton nom redessinés par-dessus ; en mode fondu, elle se fond sur ton fond d’écran d’origine.
 
 **Réglages** : un onglet de la fenêtre, à droite de « Mes fonds » (menu → Réglages…, ⌘,).
 
@@ -136,7 +136,7 @@ OSAWALLPAPER_DEMO=/chemin/vers/une/image.jpg ./OsaWallpaper.app/Contents/MacOS/O
 | Clics | Les fenêtres laissent passer la souris partout, sauf sur les boutons. |
 | Musique | `osascript` en sous-processus, une seule requête à la fois, Music ou Spotify. La progression est calculée localement. |
 | Pochette | Celle du fichier dans Music, sinon recherche iTunes. Le flou est calculé une seule fois par morceau avec Core Image. |
-| Paroles | [LRCLIB](https://lrclib.net). L’app ne se réveille qu’au début de chaque ligne. |
+| Paroles | [LRCLIB](https://lrclib.net), même artiste et même durée (±4 s) que le morceau joué. Position relue toutes les 1,5 s et recalée dès 0,25 s d’écart, moins la latence de la sortie audio (CoreAudio). L’app ne se réveille qu’au début de chaque ligne. Apple Music et Spotify ne donnent pas accès à leurs paroles synchronisées aux autres apps. |
 | AirPods | Sortie audio par défaut surveillée via CoreAudio, sans permission Bluetooth. Batterie et modèle (Product ID, même si tu as renommé tes AirPods) lus dans `system_profiler`. |
 | Charge | Notifications IOKit (`IOPSNotificationCreateRunLoopSource`) + `notify`. |
 | Volume | Écouteur CoreAudio sur le volume et la sourdine de la sortie par défaut. |
