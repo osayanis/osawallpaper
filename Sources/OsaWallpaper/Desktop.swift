@@ -12,8 +12,9 @@ import os
 //   mode économie d'énergie.
 // - « Plein écran » sur l'écran verrouillé pose aussi l'image fixe, mais seulement pendant que le Mac
 //   est verrouillé : la zone laissée ouverte sur la connexion de macOS (photo, nom, mot de passe)
-//   montre la même image, sans trou, et le bureau retrouve son fond au déverrouillage.
-// Le fond d'origine de chaque écran est mémorisé et remis quand les deux options sont coupées.
+//   montre la même image, sans trou. Le fichier du fond affiché est noté au verrouillage et remis
+//   tel quel au déverrouillage. La zone ne s'ouvre qu'une fois le fond de macOS changé (LockHole).
+// Le fond d'origine de chaque écran est mémorisé et remis quand « Aussi sur le bureau » est coupé.
 final class DesktopWallpaper {
     private let store: WallpaperStore
     private let prefs: Prefs
@@ -26,6 +27,9 @@ final class DesktopWallpaper {
     private var applied: String?                        // fond posé sur le bureau (id + mode)
     private let log = Logger(subsystem: "com.osalabs.osawallpaper", category: "desktop")
     private static let originalsKey = "desktopOriginals"
+    private static let lockKey = "lockOriginals"         // fond du bureau pendant un verrouillage (secours si l'app s'arrête)
+    private var lockOriginals: [CGDirectDisplayID: URL] = [:]
+    private var lockSwap = 0                             // numéro du verrouillage en cours (ignore les tâches d'un ancien)
 
     init(store: WallpaperStore, prefs: Prefs, lock: LockState) {
         self.store = store; self.prefs = prefs; self.lock = lock
@@ -33,7 +37,9 @@ final class DesktopWallpaper {
             .combineLatest(prefs.$desktopToo, prefs.$desktopAnimated, prefs.$lockFullScreen)
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.apply() }.store(in: &bag)
-        lock.$locked.removeDuplicates().receive(on: RunLoop.main).sink { [weak self] _ in self?.apply(); self?.updatePlayback() }.store(in: &bag)
+        lock.$locked.removeDuplicates().receive(on: RunLoop.main).sink { [weak self] l in self?.lockChanged(l); self?.updatePlayback() }.store(in: &bag)
+        if Demo.on { LockHole.shared.open = true }
+        restoreAfterLock()                               // l'app s'était arrêtée pendant un verrouillage
 
         let ws = NSWorkspace.shared.notificationCenter
         ws.addObserver(forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: .main) { [weak self] _ in self?.asleep = true; self?.updatePlayback() }
@@ -47,7 +53,7 @@ final class DesktopWallpaper {
     private var animatedKind: Bool { store.current.map { $0.kind == .video || $0.kind == .youtube } ?? false }
 
     func apply() {
-        guard prefs.desktopToo || (prefs.lockFullScreen && lock.locked), let w = store.current else {
+        guard prefs.desktopToo, let w = store.current else {
             removeWindows()
             restoreOriginals()
             applied = nil
@@ -67,6 +73,65 @@ final class DesktopWallpaper {
         removeWindows()
         if animate { makeWindows(for: w) }
         updatePlayback()
+    }
+
+    // MARK: Plein écran, Mac verrouillé
+
+    func lockChanged(_ locked: Bool) {
+        lockSwap += 1
+        let n = lockSwap
+        guard locked else {
+            LockHole.shared.open = Demo.on
+            restoreAfterLock()
+            return
+        }
+        guard prefs.lockFullScreen, !prefs.desktopToo, !Demo.on, let w = store.current else {
+            LockHole.shared.open = true                  // bureau déjà sur notre fond, ou rien à faire
+            return
+        }
+        // Seulement si on sait remettre exactement le fond affiché (une image) au déverrouillage.
+        var originals: [CGDirectDisplayID: URL] = [:]
+        for s in NSScreen.screens {
+            guard let u = NSWorkspace.shared.desktopImageURL(for: s), Self.plainImage(u),
+                  !u.path.hasPrefix(WallpaperStore.dir.path), let file = Self.existing(u.path) else {
+                log.notice("verrouillage : fond actuel non remplaçable (\(NSWorkspace.shared.desktopImageURL(for: s)?.path ?? "aucun", privacy: .public))")
+                LockHole.shared.open = true
+                return
+            }
+            originals[s.displayID] = file
+        }
+        LockHole.shared.open = false
+        lockOriginals = originals
+        UserDefaults.standard.set(Dictionary(uniqueKeysWithValues: originals.map { (String($0.key), $0.value.path) }), forKey: Self.lockKey)
+        Task { @MainActor [weak self] in
+            guard let still = await Self.stillImage(for: w), let self, self.lockSwap == n else { return }
+            for s in NSScreen.screens {
+                do { try NSWorkspace.shared.setDesktopImageURL(still, for: s, options: [.imageScaling: NSImageScaling.scaleProportionallyUpOrDown.rawValue, .allowClipping: true]) }
+                catch { self.log.error("verrouillage : \(error.localizedDescription, privacy: .public)") }
+            }
+            self.log.notice("verrouillage : fond macOS → \(still.lastPathComponent, privacy: .public), à remettre : \(originals.values.map(\.lastPathComponent), privacy: .public)")
+            // Le temps que macOS affiche le nouveau fond, puis la zone de connexion s'ouvre.
+            try? await Task.sleep(for: .seconds(1.2))
+            guard self.lockSwap == n else { return }
+            withAnimation(.easeInOut(duration: 0.6)) { LockHole.shared.open = true }
+        }
+    }
+
+    /// Remet le fond noté au verrouillage (en mémoire, ou dans les réglages si l'app s'est arrêtée).
+    private func restoreAfterLock() {
+        var originals = lockOriginals
+        if originals.isEmpty, let saved = UserDefaults.standard.dictionary(forKey: Self.lockKey) as? [String: String] {
+            for (k, p) in saved { if let id = CGDirectDisplayID(k), let u = Self.existing(p) { originals[id] = u } }
+        }
+        lockOriginals = [:]
+        UserDefaults.standard.removeObject(forKey: Self.lockKey)
+        guard !originals.isEmpty, !prefs.desktopToo, Self.oursOnScreen() else { return }
+        for s in NSScreen.screens {
+            guard let u = originals[s.displayID] ?? originals.values.first else { continue }
+            do { try NSWorkspace.shared.setDesktopImageURL(u, for: s, options: [:]) }
+            catch { log.error("déverrouillage : \(error.localizedDescription, privacy: .public)") }
+        }
+        log.notice("déverrouillage : fond remis → \(originals.values.map(\.lastPathComponent), privacy: .public)")
     }
 
     // MARK: Image fixe
