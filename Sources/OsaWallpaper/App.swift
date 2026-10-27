@@ -54,6 +54,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+        if ProcessInfo.processInfo.environment["OSAWALLPAPER_PREVIEW_TEST"] != nil {
+            // test réel de l'aperçu (Accessibilité autorisée, sans verrouiller)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { self.screens.showPreview() }
+        }
         if ProcessInfo.processInfo.environment["OSAWALLPAPER_UPDATE_TEST"] != nil {
             // test de bout en bout : installe la dernière release sans demander
             Updater.shared.check { r in if let r { Updater.shared.install(r) } else { NSLog("OsaWallpaper update test: rien de plus récent") } }

@@ -6,17 +6,41 @@ import os
 // Où macOS dessine la connexion sur l'écran verrouillé (ta photo, ton nom, le champ du mot de
 // passe), lue par l'Accessibilité. Sert aux fonds vidéo en plein écran : la vidéo couvre tout,
 // OsaWallpaper redessine ta photo et ton nom à leur place exacte, et seul le champ du mot de passe
-// reste ouvert sur macOS. Sans l'autorisation Accessibilité (ou si rien n'est trouvé), on garde la
-// zone ouverte autour de la connexion.
+// reste ouvert sur macOS. Tant que macOS n'affiche pas la connexion (Mac inactif, économiseur
+// d'écran), rien n'est ouvert : sinon on verrait ce que macOS montre dessous (l'économiseur…).
+// Sans l'Accessibilité, ou si la connexion reste introuvable alors que tu touches le Mac, on
+// ouvre une zone douce autour d'elle.
 final class LoginUI: ObservableObject {
     static let shared = LoginUI()
 
     /// Coordonnées globales de l'Accessibilité (origine en haut à gauche de l'écran principal).
     struct Layout: Equatable { var avatar: CGRect?; var name: CGRect?; var field: CGRect? }
     @Published private(set) var layout: Layout?
-    /// Fini de chercher (connexion trouvée, 4 s passées, ou pas d'Accessibilité) : sans connexion
-    /// localisée, on peut alors ouvrir la zone douce autour d'elle.
-    @Published private(set) var settled = true
+    /// L'Accessibilité est autorisée : on sait quand la connexion est affichée.
+    @Published private(set) var trusted = AXIsProcessTrusted()
+    /// Tu touches le Mac depuis 3 s et la connexion reste introuvable : zone douce de secours.
+    @Published private(set) var blind = false
+    /// L'économiseur d'écran tourne sous l'écran verrouillé : notre fond doit tout couvrir.
+    @Published private(set) var saver = false
+    private var missingSince: Date?
+
+    private init() {
+        let dn = DistributedNotificationCenter.default()
+        dn.addObserver(forName: .init("com.apple.screensaver.didstart"), object: nil, queue: .main) { [weak self] _ in self?.setSaver(true) }
+        dn.addObserver(forName: .init("com.apple.screensaver.didstop"), object: nil, queue: .main) { [weak self] _ in self?.setSaver(false) }
+    }
+
+    private func setSaver(_ v: Bool) {
+        guard saver != v else { return }
+        saver = v
+        log.notice("économiseur d'écran : \(v ? "lancé" : "arrêté", privacy: .public)")
+    }
+
+    private static func saverRunning() -> Bool {
+        NSWorkspace.shared.runningApplications.contains {
+            $0.bundleIdentifier == "com.apple.ScreenSaver.Engine" || $0.localizedName == "ScreenSaverEngine"
+        }
+    }
 
     let fullName = NSFullUserName()
     lazy var picture: NSImage? = CBIdentity(name: NSUserName(), authority: .default())?.image
@@ -29,26 +53,26 @@ final class LoginUI: ObservableObject {
     func start() {
         stop()
         logged = false
-        settled = !AXIsProcessTrusted()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
-            if self?.timer != nil { self?.settled = true }
-        }
+        trusted = AXIsProcessTrusted()
         scan()
         timer = Timer.scheduledTimer(withTimeInterval: 0.7, repeats: true) { [weak self] _ in self?.scan() }
     }
 
     /// Tests visuels (mode démo) : une connexion placée comme celle de macOS.
-    func demo(_ l: Layout) { layout = l; settled = true }
+    func demo(_ l: Layout) { layout = l }
 
     func stop() {
         timer?.invalidate(); timer = nil
         if layout != nil { layout = nil }
-        if !settled { settled = true }
+        if blind { blind = false }
+        missingSince = nil
+        setSaver(Self.saverRunning())
     }
 
     private func scan() {
         guard AXIsProcessTrusted() else {
             if !logged { log.notice("connexion : Accessibilité non autorisée, zone ouverte gardée"); logged = true }
+            setSaver(Self.saverRunning())
             return
         }
         var found = Layout(), seen: [String] = [], texts: [CGRect] = []
@@ -79,8 +103,21 @@ final class LoginUI: ObservableObject {
                 log.notice("connexion, arbre : \(seen.prefix(120).joined(separator: " | "), privacy: .public)")
             }
             layout = l
-            if l != nil { settled = true }
             log.notice("connexion : photo \(String(describing: l?.avatar), privacy: .public) nom \(String(describing: l?.name), privacy: .public) champ \(String(describing: l?.field), privacy: .public)")
+        }
+        setSaver(Self.saverRunning() || (saver && l == nil))
+        let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
+        if l == nil && idle < 6 && !saver {
+            let since = missingSince ?? Date()
+            missingSince = since
+            let b = Date().timeIntervalSince(since) >= 3
+            if b != blind {
+                blind = b
+                if b { log.notice("connexion introuvable malgré l'activité : zone douce de secours") }
+            }
+        } else {
+            missingSince = nil
+            if blind { blind = false }
         }
     }
 

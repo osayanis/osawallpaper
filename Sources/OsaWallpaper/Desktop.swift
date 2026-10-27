@@ -94,6 +94,7 @@ final class DesktopWallpaper {
         if locked && prefs.lockFullScreen && !Demo.on { LoginUI.shared.start() } else if !Demo.on { LoginUI.shared.stop() }
         guard locked else {
             swapped = nil
+            LockHole.shared.matched = false
             LockHole.shared.open = Demo.on
             restoreAfterLock()
             // macOS remet son fond sous le cache, en fondu, mais il est lent juste après un
@@ -126,6 +127,7 @@ final class DesktopWallpaper {
             }
         }
         guard let target else {
+            LockHole.shared.matched = false
             if swapped != nil {
                 lockSwap += 1                            // annule une pose d'image en cours
                 swapped = nil
@@ -159,6 +161,7 @@ final class DesktopWallpaper {
         // l'ancien fond autour de ta photo) ; ensuite elle reste ouverte pendant les changements.
         let first = swapped == nil
         if first { LockHole.shared.open = false }
+        LockHole.shared.matched = false
         swapped = target.key
         lockSwap += 1
         let n = lockSwap
@@ -168,6 +171,7 @@ final class DesktopWallpaper {
                 do { try NSWorkspace.shared.setDesktopImageURL(still, for: s, options: [.imageScaling: NSImageScaling.scaleProportionallyUpOrDown.rawValue, .allowClipping: true]) }
                 catch { self.log.error("verrouillage : \(error.localizedDescription, privacy: .public)") }
             }
+            LockHole.shared.matched = target.key.hasPrefix("fond ")
             self.log.notice("verrouillage : fond macOS → \(target.key, privacy: .public) (\(still.lastPathComponent, privacy: .public)), à remettre : \(originals.values.map(\.lastPathComponent), privacy: .public)")
             guard first else { return }
             // Le temps que macOS affiche le nouveau fond, puis la zone de connexion s'ouvre.
