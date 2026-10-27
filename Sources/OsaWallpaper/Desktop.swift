@@ -107,8 +107,20 @@ final class DesktopWallpaper {
         }
     }
 
-    /// Mémorise le fond d'origine de chaque écran, une seule fois (avant notre premier changement).
+    // Le fond d'origine : toute la configuration de macOS (fonds animés, dynamiques, couleurs,
+    // un fond par bureau…) copiée avant notre premier changement, puis remise telle quelle.
+    // En secours, l'image de chaque écran (si la copie manque).
+    private static let appleStore = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/com.apple.wallpaper/Store/Index.plist")
+    private static let backup = WallpaperStore.dir.deletingLastPathComponent().appendingPathComponent("desktop-original.plist")
+
+    /// Mémorise le fond d'origine, une seule fois (avant notre premier changement).
     private func saveOriginals() {
+        let fm = FileManager.default
+        if !fm.fileExists(atPath: Self.backup.path), !Self.oursOnScreen() {
+            do { try fm.copyItem(at: Self.appleStore, to: Self.backup) }
+            catch { log.error("copie du fond d'origine : \(error.localizedDescription, privacy: .public)") }
+        }
         let d = UserDefaults.standard
         var saved = d.dictionary(forKey: Self.originalsKey) as? [String: String] ?? [:]
         var changed = false
@@ -120,14 +132,50 @@ final class DesktopWallpaper {
         if changed { d.set(saved, forKey: Self.originalsKey) }
     }
 
+    /// Un de nos fonds est-il affiché sur un écran ?
+    private static func oursOnScreen() -> Bool {
+        NSScreen.screens.contains { NSWorkspace.shared.desktopImageURL(for: $0)?.path.hasPrefix(WallpaperStore.dir.path) == true }
+    }
+
     private func restoreOriginals() {
-        guard !Demo.on, let saved = UserDefaults.standard.dictionary(forKey: Self.originalsKey) as? [String: String] else { return }
-        for s in NSScreen.screens {
-            if let p = saved[String(s.displayID)], FileManager.default.fileExists(atPath: p) {
-                try? NSWorkspace.shared.setDesktopImageURL(URL(fileURLWithPath: p), for: s, options: [:])
-            }
+        guard !Demo.on else { return }
+        let fm = FileManager.default
+        let saved = UserDefaults.standard.dictionary(forKey: Self.originalsKey) as? [String: String]
+        defer {
+            try? fm.removeItem(at: Self.backup)
+            UserDefaults.standard.removeObject(forKey: Self.originalsKey)
         }
-        UserDefaults.standard.removeObject(forKey: Self.originalsKey)
+        // Si l'utilisateur a choisi un autre fond entre-temps, on n'y touche pas.
+        guard Self.oursOnScreen() else { return }
+        if fm.fileExists(atPath: Self.backup.path), restoreAppleStore() { return }
+        for s in NSScreen.screens {
+            guard let p = saved?[String(s.displayID)] else { continue }
+            do { try NSWorkspace.shared.setDesktopImageURL(URL(fileURLWithPath: p), for: s, options: [:]) }
+            catch { log.error("fond d'origine : \(error.localizedDescription, privacy: .public)") }
+        }
+    }
+
+    /// Remet la configuration copiée et relance WallpaperAgent (le service de macOS qui affiche
+    /// les fonds) pour qu'il la relise.
+    private func restoreAppleStore() -> Bool {
+        do {
+            try Self.replace(Self.appleStore, with: Self.backup)
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
+            p.arguments = ["WallpaperAgent"]
+            try p.run(); p.waitUntilExit()
+            return true
+        } catch {
+            log.error("remise du fond d'origine : \(error.localizedDescription, privacy: .public)")
+            return false
+        }
+    }
+
+    private static func replace(_ dst: URL, with src: URL) throws {
+        let tmp = dst.deletingLastPathComponent().appendingPathComponent("Index.osawallpaper.plist")
+        try? FileManager.default.removeItem(at: tmp)
+        try FileManager.default.copyItem(at: src, to: tmp)
+        _ = try FileManager.default.replaceItemAt(dst, withItemAt: tmp)
     }
 
     // MARK: Vidéo animée
