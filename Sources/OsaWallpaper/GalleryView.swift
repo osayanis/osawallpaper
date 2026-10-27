@@ -99,10 +99,7 @@ struct GalleryView: View {
 
     var body: some View {
         ZStack {
-            Color(red: 0.04, green: 0.04, blue: 0.06)
-            // l'ambiance de la fenêtre suit le fond sélectionné
-            Ambient(url: shown?.thumb ?? fallbackThumb(shown)).opacity(0.34)
-                .animation(.easeInOut(duration: 0.6), value: shown?.id)
+            Color(red: 0.04, green: 0.04, blue: 0.06)      // fond fixe, ne suit pas la photo choisie
             HStack(spacing: 0) {
                 VStack(spacing: 0) {
                     header
@@ -318,48 +315,6 @@ struct GalleryView: View {
                 }
             }
         }
-    }
-}
-
-/// Fond d'ambiance : la miniature réduite à 96 px puis floutée une seule fois (Core Image).
-/// Bien moins coûteux qu'un flou en direct de 90 px sur toute la fenêtre.
-struct Ambient: View {
-    let url: URL?
-    @State private var image: NSImage?
-    @MainActor private static var cache: [URL: NSImage] = [:]
-
-    var body: some View {
-        Color.clear
-            .overlay { if let image { Image(nsImage: image).resizable().aspectRatio(contentMode: .fill).id(url).transition(.opacity) } }
-            .clipped()
-            .task(id: url) {
-                guard let url else { image = nil; return }
-                if let c = Self.cache[url] { image = c; return }
-                guard let (d, _) = try? await URLSession.shared.data(from: url) else { return }
-                let img = await Task.detached { Self.blurred(d) }.value
-                if let img { Self.cache[url] = img; withAnimation(.easeInOut(duration: 0.5)) { image = img } }
-            }
-    }
-
-    nonisolated static func blurred(_ d: Data) -> NSImage? {
-        guard let ci = CIImage(data: d), ci.extent.width > 0 else { return nil }
-        let small = ci.transformed(by: CGAffineTransform(scaleX: 96 / ci.extent.width, y: 96 / ci.extent.width))
-        let ctx = CIContext()
-        // Une photo claire (ciel, neige) éclaircirait toute la fenêtre : on ramène chaque photo à
-        // la même luminosité basse, pour ne garder qu'une teinte de ses couleurs.
-        var px = [UInt8](repeating: 0, count: 4)
-        ctx.render(small.applyingFilter("CIAreaAverage", parameters: [kCIInputExtentKey: CIVector(cgRect: small.extent)]),
-                   toBitmap: &px, rowBytes: 4, bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBA8, colorSpace: nil)
-        let lum = max(0.01, (0.2126 * Double(px[0]) + 0.7152 * Double(px[1]) + 0.0722 * Double(px[2])) / 255)
-        let target = 0.12
-        let out = small.clampedToExtent()
-            .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 7])
-            .applyingFilter("CIExposureAdjust", parameters: [kCIInputEVKey: log2(target / lum)])
-            .applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 1.2])
-            .applyingFilter("CIColorClamp", parameters: ["inputMaxComponents": CIVector(x: 0.05, y: 0.05, z: 0.05, w: 1)])   // pas de zone claire (ciel, neige) ; valeurs linéaires, ≈ 25 % affiché
-            .cropped(to: small.extent)
-        guard let cg = ctx.createCGImage(out, from: out.extent) else { return nil }
-        return NSImage(cgImage: cg, size: out.extent.size)
     }
 }
 
