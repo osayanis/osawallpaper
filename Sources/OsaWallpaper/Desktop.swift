@@ -85,12 +85,13 @@ final class DesktopWallpaper {
         guard locked else {
             LockHole.shared.open = Demo.on
             restoreAfterLock()
-            // macOS remet son fond sous le cache, en fondu : on retire le cache une fois fini.
+            // macOS remet son fond sous le cache, en fondu, mais il est lent juste après un
+            // déverrouillage : on attend largement qu'il ait fini avant d'effacer le cache, doucement.
             let c = covers
             covers = []
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 7) {
                 NSAnimationContext.runAnimationGroup({ ctx in
-                    ctx.duration = 0.4
+                    ctx.duration = 1.2
                     c.forEach { $0.animator().alphaValue = 0 }
                 }, completionHandler: { c.forEach { $0.orderOut(nil); $0.close() } })
             }

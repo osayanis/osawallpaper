@@ -50,8 +50,17 @@ final class LoginUI: ObservableObject {
             walk(root, depth: 0, &found, &seen)
         }
         if !logged { log.notice("connexion : \(seen.prefix(80).joined(separator: " | "), privacy: .public)"); logged = true }
-        let l: Layout? = found.field == nil && found.avatar == nil && found.name == nil ? nil : found
+        var l: Layout? = found.field == nil && found.avatar == nil && found.name == nil ? nil : found
+        // macOS n'expose pas toujours la photo ni le champ : on les place d'après le nom, comme sur
+        // l'écran natif (photo ronde au-dessus, champ du mot de passe en dessous).
+        if let n = l?.name {
+            if l?.avatar == nil { l?.avatar = CGRect(x: n.midX - 30, y: n.minY - 10 - 60, width: 60, height: 60) }
+            if l?.field == nil { l?.field = CGRect(x: n.midX - 100, y: n.maxY + 12, width: 200, height: 30) }
+        }
         if l != layout {
+            if found.name != nil || found.field != nil {
+                log.notice("connexion, arbre : \(seen.prefix(120).joined(separator: " | "), privacy: .public)")
+            }
             layout = l
             log.notice("connexion : photo \(String(describing: l?.avatar), privacy: .public) nom \(String(describing: l?.name), privacy: .public) champ \(String(describing: l?.field), privacy: .public)")
         }
