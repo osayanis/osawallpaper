@@ -344,11 +344,21 @@ struct Ambient: View {
     nonisolated static func blurred(_ d: Data) -> NSImage? {
         guard let ci = CIImage(data: d), ci.extent.width > 0 else { return nil }
         let small = ci.transformed(by: CGAffineTransform(scaleX: 96 / ci.extent.width, y: 96 / ci.extent.width))
+        let ctx = CIContext()
+        // Une photo claire (ciel, neige) éclaircirait toute la fenêtre : on ramène chaque photo à
+        // la même luminosité basse, pour ne garder qu'une teinte de ses couleurs.
+        var px = [UInt8](repeating: 0, count: 4)
+        ctx.render(small.applyingFilter("CIAreaAverage", parameters: [kCIInputExtentKey: CIVector(cgRect: small.extent)]),
+                   toBitmap: &px, rowBytes: 4, bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBA8, colorSpace: nil)
+        let lum = max(0.01, (0.2126 * Double(px[0]) + 0.7152 * Double(px[1]) + 0.0722 * Double(px[2])) / 255)
+        let target = 0.12
         let out = small.clampedToExtent()
             .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 7])
-            .applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 1.35])
+            .applyingFilter("CIExposureAdjust", parameters: [kCIInputEVKey: log2(target / lum)])
+            .applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 1.2])
+            .applyingFilter("CIColorClamp", parameters: ["inputMaxComponents": CIVector(x: 0.05, y: 0.05, z: 0.05, w: 1)])   // pas de zone claire (ciel, neige) ; valeurs linéaires, ≈ 25 % affiché
             .cropped(to: small.extent)
-        guard let cg = CIContext().createCGImage(out, from: out.extent) else { return nil }
+        guard let cg = ctx.createCGImage(out, from: out.extent) else { return nil }
         return NSImage(cgImage: cg, size: out.extent.size)
     }
 }
