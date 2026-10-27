@@ -67,6 +67,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let dir = ProcessInfo.processInfo.environment["OSAWALLPAPER_SNAP"] {
                 Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { _ in Snap.windows(to: dir) }
             }
+        } else if ProcessInfo.processInfo.environment["OSAWALLPAPER_LOCKSWAP_TEST"] != nil {
+            // test réel du plein écran : fond macOS changé « pendant le verrouillage » puis remis
+            // (sans verrouiller ni afficher l'écran verrouillé)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.desktop?.lockChanged(true) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6) { NSLog("OsaWallpaper test: zone ouverte=\(LockHole.shared.open)"); self.desktop?.lockChanged(false) }
         } else if ProcessInfo.processInfo.environment["OSAWALLPAPER_TOAST_TEST"] != nil {
             // test réel des pastilles (au-dessus de tout)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {

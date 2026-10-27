@@ -121,6 +121,7 @@ struct CustomBackdrop: View {
     @ObservedObject var store: WallpaperStore
     let size: CGSize
     var fullScreen = false
+    @ObservedObject private var hole = LockHole.shared
     var body: some View {
         ZStack {
             Group {
@@ -137,7 +138,7 @@ struct CustomBackdrop: View {
             }
             .frame(width: size.width, height: size.height)
             .clipped()
-            .lockMask(fullScreen, from: 0.72, to: 0.98, size: size)
+            .lockMask(fullScreen, from: 0.72, to: 0.98, size: size, open: hole.open)
             LinearGradient(colors: [.black.opacity(0.32), .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.34))
         }
         .frame(width: size.width, height: size.height)
@@ -168,9 +169,16 @@ struct MotionBackdrop: View {
 extension View {
     /// Fondu vers le bas (ta photo de session et le champ du mot de passe restent visibles), ou
     /// plein écran avec seulement une fenêtre douce sur la connexion de macOS.
-    @ViewBuilder func lockMask(_ fullScreen: Bool, from a: CGFloat, to b: CGFloat, size: CGSize) -> some View {
-        if fullScreen { mask(LoginHole(size: size)) } else { mask(LockBackdrop.fade(from: a, to: b)) }
+    @ViewBuilder func lockMask(_ fullScreen: Bool, from a: CGFloat, to b: CGFloat, size: CGSize, open: Bool = true) -> some View {
+        if fullScreen { mask(LoginHole(size: size, open: open)) } else { mask(LockBackdrop.fade(from: a, to: b)) }
     }
+}
+
+/// La zone de connexion ne s'ouvre qu'une fois le fond de macOS remplacé par le nôtre : sinon on
+/// verrait l'ancien fond autour de la photo de session le temps que macOS le change.
+final class LockHole: ObservableObject {
+    static let shared = LockHole()
+    @Published var open = false
 }
 
 /// Masque plein écran : tout est opaque sauf une ellipse floue en bas au centre, là où macOS
@@ -178,6 +186,7 @@ extension View {
 /// Le même fond est posé sur macOS (Desktop.swift) : l'ellipse montre la même image, sans trou.
 struct LoginHole: View {
     let size: CGSize
+    var open = true
     var body: some View {
         ZStack {
             Rectangle()
@@ -185,6 +194,7 @@ struct LoginHole: View {
                                center: .center, startRadiusFraction: 0, endRadiusFraction: 0.5)
                 .frame(width: 560, height: 340)
                 .position(x: size.width / 2, y: size.height - 140)
+                .opacity(open ? 1 : 0)
                 .blendMode(.destinationOut)
         }
         .compositingGroup()
