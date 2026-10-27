@@ -328,32 +328,107 @@ enum AppleAerials {
 
 /// Lecteur officiel de YouTube (intégration youtube-nocookie), en sourdine, en boucle, sans
 /// commandes, agrandi pour remplir l'écran. Créé seulement quand l'écran verrouillé est visible.
+/// Vidéo YouTube en fond : rien ne doit trahir YouTube. Un script injecté dans le lecteur cache
+/// toute son interface (boutons, titre, logo, chargement, fin, pubs) et passe les pubs ; la
+/// miniature de la vidéo reste par-dessus tant que la vraie vidéo ne tourne pas.
 struct YouTubeView: NSViewRepresentable {
     let id: String
 
-    func makeNSView(context: Context) -> WKWebView {
+    func makeNSView(context: Context) -> NSView {
+        let c = context.coordinator
         let cfg = WKWebViewConfiguration()
         cfg.mediaTypesRequiringUserActionForPlayback = []
-        let v = WKWebView(frame: .zero, configuration: cfg)
-        v.setValue(false, forKey: "drawsBackground")
-        load(v, context.coordinator)
-        return v
+        cfg.userContentController.addUserScript(WKUserScript(source: Self.hideChrome, injectionTime: .atDocumentEnd, forMainFrameOnly: false))
+        cfg.userContentController.add(Weak(c), name: "osaYT")
+        let web = WKWebView(frame: .zero, configuration: cfg)
+        web.setValue(false, forKey: "drawsBackground")
+        web.autoresizingMask = [.width, .height]
+
+        let root = NSView()
+        root.wantsLayer = true
+        root.layer?.backgroundColor = NSColor.black.cgColor
+        web.frame = root.bounds
+        root.addSubview(web)
+        // Une vraie vue au-dessus (un calque ajouté à la main passerait sous celui de la page).
+        let cover = NSView(frame: root.bounds)
+        cover.wantsLayer = true
+        cover.layer?.backgroundColor = NSColor.black.cgColor
+        cover.layer?.contentsGravity = .resizeAspectFill
+        cover.layer?.masksToBounds = true
+        cover.autoresizingMask = [.width, .height]
+        root.addSubview(cover, positioned: .above, relativeTo: web)
+        c.web = web; c.cover = cover
+        load(c)
+        return root
     }
 
-    func updateNSView(_ v: WKWebView, context: Context) {
-        if context.coordinator.id != id { load(v, context.coordinator) }
+    func updateNSView(_ v: NSView, context: Context) {
+        if context.coordinator.id != id { load(context.coordinator) }
     }
 
     func makeCoordinator() -> Box { Box() }
-    final class Box { var id = "" }
 
-    static func dismantleNSView(_ v: WKWebView, coordinator: Box) {
-        v.loadHTMLString("", baseURL: nil)   // coupe la vidéo tout de suite
+    final class Box: NSObject, WKScriptMessageHandler {
+        var id = ""
+        weak var web: WKWebView?
+        var cover: NSView?
+        private var hide: DispatchWorkItem?
+
+        /// Le script dit si la vraie vidéo tourne : cache retiré tout de suite, remis seulement si
+        /// l'arrêt dure (la boucle relance la vidéo en une fraction de seconde).
+        func userContentController(_ u: WKUserContentController, didReceive m: WKScriptMessage) {
+            let playing = m.body as? Bool ?? false
+            hide?.cancel()
+            if playing { fade(to: 0) }
+            else {
+                let w = DispatchWorkItem { [weak self] in self?.fade(to: 1) }
+                hide = w
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.7, execute: w)
+            }
+        }
+
+        func fade(to o: CGFloat) {
+            guard let cover, cover.alphaValue != o else { return }
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.5
+                cover.animator().alphaValue = o
+            }
+        }
+
+        func showThumbnail(_ id: String) {
+            Task { @MainActor [weak self] in
+                for q in ["maxresdefault", "sddefault", "hqdefault"] {
+                    guard let u = URL(string: "https://i.ytimg.com/vi/\(id)/\(q).jpg"),
+                          let (d, r) = try? await URLSession.shared.data(from: u), (r as? HTTPURLResponse)?.statusCode == 200,
+                          let img = NSImage(data: d), let self, self.id == id else { continue }
+                    self.cover?.layer?.contents = img
+                    // Les miniatures 4:3 ont des bandes noires : on garde le centre en 16:9.
+                    let ratio = img.size.width / max(1, img.size.height)
+                    self.cover?.layer?.contentsRect = ratio < 1.5 ? CGRect(x: 0, y: 0.125, width: 1, height: 0.75) : CGRect(x: 0, y: 0, width: 1, height: 1)
+                    return
+                }
+            }
+        }
     }
 
-    private func load(_ v: WKWebView, _ box: Box) {
-        box.id = id
-        let params = "autoplay=1&mute=1&loop=1&playlist=\(id)&controls=0&disablekb=1&fs=0&rel=0&iv_load_policy=3&playsinline=1&modestbranding=1"
+    /// Le gestionnaire de messages est retenu par WebKit : on lui passe un relais faible.
+    final class Weak: NSObject, WKScriptMessageHandler {
+        weak var target: WKScriptMessageHandler?
+        init(_ t: WKScriptMessageHandler) { target = t }
+        func userContentController(_ u: WKUserContentController, didReceive m: WKScriptMessage) { target?.userContentController(u, didReceive: m) }
+    }
+
+    static func dismantleNSView(_ v: NSView, coordinator: Box) {
+        coordinator.web?.configuration.userContentController.removeScriptMessageHandler(forName: "osaYT")
+        coordinator.web?.loadHTMLString("", baseURL: nil)   // coupe la vidéo tout de suite
+    }
+
+    private func load(_ c: Box) {
+        c.id = id
+        c.cover?.alphaValue = 1
+        c.cover?.layer?.contents = nil
+        c.showThumbnail(id)
+        let params = "autoplay=1&mute=1&loop=1&playlist=\(id)&controls=0&disablekb=1&fs=0&rel=0&iv_load_policy=3&playsinline=1&modestbranding=1&cc_load_policy=0"
         let html = """
         <!doctype html><html><head><meta name="referrer" content="strict-origin-when-cross-origin"><style>
         html,body{margin:0;height:100%;overflow:hidden;background:transparent}
@@ -363,6 +438,44 @@ struct YouTubeView: NSViewRepresentable {
         allow="autoplay; encrypted-media" referrerpolicy="strict-origin-when-cross-origin"></iframe></body></html>
         """
         // Une origine est nécessaire : sans « Referer », YouTube refuse la lecture (erreur 153).
-        v.loadHTMLString(html, baseURL: URL(string: "https://osalabs.fr/"))
+        c.web?.loadHTMLString(html, baseURL: URL(string: "https://osalabs.fr/"))
     }
+
+    /// Injecté dans le lecteur YouTube (cadre youtube-nocookie) : cache toute l'interface, passe et
+    /// masque les pubs, relance la lecture, et dit à l'app si la vraie vidéo tourne.
+    static let hideChrome = """
+    (function(){
+      if (!/youtube/.test(location.hostname)) return;
+      var css = document.createElement('style');
+      css.textContent = '.ytp-chrome-top,.ytp-chrome-bottom,.ytp-gradient-top,.ytp-gradient-bottom,.ytp-large-play-button,' +
+        '.ytp-cued-thumbnail-overlay,.ytp-pause-overlay,.ytp-watermark,.ytp-youtube-button,.ytp-show-cards-title,' +
+        '.ytp-impression-link,.ytp-spinner,.ytp-endscreen-content,.ytp-ce-element,.iv-branding,.ytp-paid-content-overlay,' +
+        '.ytp-contextmenu,.ytp-tooltip,.ytp-ad-module,.video-ads,.ytp-ad-overlay-container,.ytp-ad-player-overlay,' +
+        '.ytp-ad-player-overlay-layout,.ytp-ad-skip-button-container,.ytp-error,.ytp-overlays-container,.ytp-suggested-action,' +
+        '.ytp-featured-product,.ytp-cards-teaser,.ytp-autonav-endscreen,.ytp-videowall-still,.ytp-title,.ytp-chrome-controls,' +
+        '.ytp-iv-player-content,.ytp-player-content,.annotation{display:none!important}' +
+        '.html5-video-player > :not(.html5-video-container){display:none!important}' +   // tout sauf la vidéo, quels que soient les noms
+        '#player-control-overlay,#player-controls,player-middle-controls,.ytPlayerControlsContainerHost,' +
+        '[id*="control"],[class*="control"]:not(.html5-video-player):not(video){display:none!important}' +   // nouvelle interface « tactile"
+        'video::-webkit-media-controls,video::-webkit-media-controls-enclosure,video::-webkit-media-controls-panel,' +
+        'video::-webkit-media-controls-start-playback-button,video::-webkit-media-controls-overlay-play-button' +
+        '{display:none!important;-webkit-appearance:none!important;opacity:0!important}' +   // commandes vidéo de macOS (WebKit)
+        '.html5-video-player.ad-showing video,.html5-video-player.ad-interrupting video{opacity:0!important}' +
+        '*{cursor:none!important}';
+      (document.head || document.documentElement).appendChild(css);
+      var last = null;
+      setInterval(function(){
+        var p = document.querySelector('.html5-video-player'), v = document.querySelector('video');
+        var ad = !!p && (p.classList.contains('ad-showing') || p.classList.contains('ad-interrupting'));
+        if (ad) {
+          var s = document.querySelector('.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-skip-ad-button,.ytp-ad-skip-button-slot button');
+          if (s) s.click();
+        }
+        if (v) { v.controls = false; v.removeAttribute('controls'); v.disablePictureInPicture = true; }
+        if (v && v.paused && !ad) { v.muted = true; v.play().catch(function(){}); }
+        var ok = !!v && !ad && !v.paused && v.readyState >= 3 && v.currentTime > 0.2;
+        if (ok !== last) { last = ok; try { window.webkit.messageHandlers.osaYT.postMessage(ok); } catch (e) {} }
+      }, 250);
+    })();
+    """
 }
