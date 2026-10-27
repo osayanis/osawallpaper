@@ -30,6 +30,7 @@ final class DesktopWallpaper {
     private static let lockKey = "lockOriginals"         // fond du bureau pendant un verrouillage (secours si l'app s'arrête)
     private var lockOriginals: [CGDirectDisplayID: URL] = [:]
     private var lockSwap = 0                             // numéro du verrouillage en cours (ignore les tâches d'un ancien)
+    private var covers: [NSWindow] = []                  // le fond d'origine, peint au niveau du bureau pendant un verrouillage
 
     init(store: WallpaperStore, prefs: Prefs, lock: LockState) {
         self.store = store; self.prefs = prefs; self.lock = lock
@@ -83,6 +84,15 @@ final class DesktopWallpaper {
         guard locked else {
             LockHole.shared.open = Demo.on
             restoreAfterLock()
+            // macOS remet son fond sous le cache, en fondu : on retire le cache une fois fini.
+            let c = covers
+            covers = []
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                NSAnimationContext.runAnimationGroup({ ctx in
+                    ctx.duration = 0.4
+                    c.forEach { $0.animator().alphaValue = 0 }
+                }, completionHandler: { c.forEach { $0.orderOut(nil); $0.close() } })
+            }
             return
         }
         guard prefs.lockFullScreen, !prefs.desktopToo, !Demo.on, let w = store.current else {
@@ -102,6 +112,7 @@ final class DesktopWallpaper {
         }
         LockHole.shared.open = false
         lockOriginals = originals
+        showCovers(originals)
         UserDefaults.standard.set(Dictionary(uniqueKeysWithValues: originals.map { (String($0.key), $0.value.path) }), forKey: Self.lockKey)
         Task { @MainActor [weak self] in
             guard let still = await Self.stillImage(for: w), let self, self.lockSwap == n else { return }
@@ -114,6 +125,31 @@ final class DesktopWallpaper {
             try? await Task.sleep(for: .seconds(1.2))
             guard self.lockSwap == n else { return }
             withAnimation(.easeInOut(duration: 0.6)) { LockHole.shared.open = true }
+        }
+    }
+
+    /// Le fond d'origine peint au niveau du bureau (sous les icônes et les fenêtres), le temps du
+    /// verrouillage : invisible derrière l'écran verrouillé, il est là dès le déverrouillage, avant
+    /// même que macOS ait remis son fond. Pas d'aller-retour visible avec notre fond.
+    private func showCovers(_ originals: [CGDirectDisplayID: URL]) {
+        covers.forEach { $0.orderOut(nil); $0.close() }
+        covers = NSScreen.screens.compactMap { s in
+            guard let u = originals[s.displayID], let img = NSImage(contentsOf: u) else { return nil }
+            let win = NSWindow(contentRect: s.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            win.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)) + 1)
+            win.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+            win.ignoresMouseEvents = true
+            win.isReleasedWhenClosed = false
+            win.hasShadow = false
+            win.backgroundColor = .black
+            let v = NSView(frame: NSRect(origin: .zero, size: s.frame.size))
+            v.wantsLayer = true
+            v.layer?.contents = img
+            v.layer?.contentsGravity = .resizeAspectFill      // comme macOS : « Remplir l'écran »
+            win.contentView = v
+            win.setFrame(s.frame, display: true)
+            win.orderFrontRegardless()
+            return win
         }
     }
 
