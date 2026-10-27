@@ -73,9 +73,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // OSAWALLPAPER_DEMO_LOGIN : connexion de macOS simulée (photo, nom, champ) pour le plein écran vidéo.
             if ProcessInfo.processInfo.environment["OSAWALLPAPER_DEMO_LOGIN"] != nil, let s = NSScreen.main?.frame {
                 let primary = NSScreen.screens.first?.frame.height ?? s.height, top = primary - s.maxY, cx = s.midX
-                LoginUI.shared.demo(.init(avatar: CGRect(x: cx - 32, y: top + s.height - 214, width: 64, height: 64),
-                                          name: CGRect(x: cx - 60, y: top + s.height - 140, width: 120, height: 18),
-                                          field: CGRect(x: cx - 95, y: top + s.height - 108, width: 190, height: 30)))
+                // nom placé comme sur l'écran verrouillé réel d'un MacBook Air 13" (relevé par l'Accessibilité)
+                let n = CGRect(x: cx - 54.75, y: top + s.height - 103.5, width: 109.5, height: 21)
+                LoginUI.shared.demo(.init(avatar: CGRect(x: n.midX - 30, y: n.minY - 70, width: 60, height: 60), name: n,
+                                          field: CGRect(x: n.midX - 100, y: n.maxY + 12, width: 200, height: 30)))
             }
             // OSAWALLPAPER_APPLY=<fichier ou lien> : utilise ce fond tout de suite.
             if let a = ProcessInfo.processInfo.environment["OSAWALLPAPER_APPLY"] {
