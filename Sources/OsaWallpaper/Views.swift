@@ -69,11 +69,11 @@ struct LockView: View {
         ZStack(alignment: .top) {
             if show {
                 if custom {
-                    CustomBackdrop(store: wall, size: size).id(wall.current?.id).transition(.opacity)
+                    CustomBackdrop(store: wall, size: size, fullScreen: prefs.lockFullScreen).id(wall.current?.id).transition(.opacity)
                 } else if moving, let p = music.motionPlayer.player {
-                    MotionBackdrop(player: p, size: size).transition(.opacity)
+                    MotionBackdrop(player: p, size: size, fullScreen: prefs.lockFullScreen).transition(.opacity)
                 } else if full, let b = music.backdrop {
-                    LockBackdrop(image: b, palette: music.palette, size: size)
+                    LockBackdrop(image: b, palette: music.palette, size: size, fullScreen: prefs.lockFullScreen)
                         .id(ObjectIdentifier(b)).transition(.opacity)
                 }
                 VStack(spacing: 0) {
@@ -120,6 +120,7 @@ struct LockView: View {
 struct CustomBackdrop: View {
     @ObservedObject var store: WallpaperStore
     let size: CGSize
+    var fullScreen = false
     var body: some View {
         ZStack {
             Group {
@@ -136,7 +137,7 @@ struct CustomBackdrop: View {
             }
             .frame(width: size.width, height: size.height)
             .clipped()
-            .mask(LockBackdrop.fade(from: 0.72, to: 0.98))
+            .lockMask(fullScreen, from: 0.72, to: 0.98, size: size)
             LinearGradient(colors: [.black.opacity(0.32), .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.34))
         }
         .frame(width: size.width, height: size.height)
@@ -149,17 +150,43 @@ struct CustomBackdrop: View {
 struct MotionBackdrop: View {
     let player: AVPlayer
     let size: CGSize
+    var fullScreen = false
     var body: some View {
         ZStack {
             MotionView(player: player)
                 .frame(width: size.width, height: size.height)
-                .mask(LockBackdrop.fade(from: 0.66, to: 0.97))
+                .lockMask(fullScreen, from: 0.66, to: 0.97, size: size)
             LinearGradient(colors: [.black.opacity(0.35), .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.34))
             LinearGradient(colors: [.clear, .black.opacity(0.28), .clear], startPoint: UnitPoint(x: 0.5, y: 0.55), endPoint: UnitPoint(x: 0.5, y: 0.95))
         }
         .frame(width: size.width, height: size.height)
         .clipped()
         .allowsHitTesting(false)
+    }
+}
+
+extension View {
+    /// Fondu vers le bas (ta photo de session et le champ du mot de passe restent visibles), ou
+    /// plein écran avec seulement une fenêtre douce sur la connexion de macOS.
+    @ViewBuilder func lockMask(_ fullScreen: Bool, from a: CGFloat, to b: CGFloat, size: CGSize) -> some View {
+        if fullScreen { mask(LoginHole(size: size)) } else { mask(LockBackdrop.fade(from: a, to: b)) }
+    }
+}
+
+/// Masque plein écran : tout est opaque sauf une ellipse floue en bas au centre, là où macOS
+/// affiche ta photo, ton nom et le champ du mot de passe (nos fenêtres passent au-dessus).
+struct LoginHole: View {
+    let size: CGSize
+    var body: some View {
+        ZStack {
+            Rectangle()
+            EllipticalGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.55), .init(color: .clear, location: 1)],
+                               center: .center, startRadiusFraction: 0, endRadiusFraction: 0.5)
+                .frame(width: 560, height: 340)
+                .position(x: size.width / 2, y: size.height - 140)
+                .blendMode(.destinationOut)
+        }
+        .compositingGroup()
     }
 }
 
@@ -170,6 +197,7 @@ struct LockBackdrop: View {
     let image: NSImage
     let palette: [Color]
     let size: CGSize
+    var fullScreen = false
 
     var body: some View {
         ZStack {
@@ -180,13 +208,13 @@ struct LockBackdrop: View {
                     .scaleEffect(1.15)
                 RadialGradient(colors: [.white.opacity(0.10), .clear], center: UnitPoint(x: 0.5, y: 0.5), startRadius: 0, endRadius: size.height * 0.5)
             }
-            .mask(Self.fade(from: 0.5, to: 0.84))
+            .lockMask(fullScreen, from: 0.5, to: 0.84, size: size)
             // 2) …puis ses couleurs, plus bas : le passage vers ton fond d'écran se fait en douceur.
-            if palette.count == 9 { mesh.opacity(0.7).mask(Self.fade(from: 0.6, to: 0.99)) }
+            if palette.count == 9 { mesh.opacity(0.7).lockMask(fullScreen, from: 0.6, to: 0.99, size: size) }
             Image(nsImage: Noise.image).resizable(resizingMode: .tile).opacity(0.05).blendMode(.overlay)
-                .mask(Self.fade(from: 0.6, to: 0.95))
+                .lockMask(fullScreen, from: 0.6, to: 0.95, size: size)
             RadialGradient(colors: [.clear, .black.opacity(0.4)], center: UnitPoint(x: 0.5, y: 0.4), startRadius: size.height * 0.35, endRadius: size.width * 0.75)
-                .mask(Self.fade(from: 0.55, to: 0.9))
+                .lockMask(fullScreen, from: 0.55, to: 0.9, size: size)
             LinearGradient(colors: [.black.opacity(0.3), .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.32))
         }
         .frame(width: size.width, height: size.height)
