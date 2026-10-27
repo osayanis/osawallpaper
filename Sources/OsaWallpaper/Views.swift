@@ -160,7 +160,10 @@ struct CustomBackdrop: View {
             }
             .frame(width: size.width, height: size.height)
             .clipped()
-            .modifier(BackdropMask(fullScreen: fullScreen, size: size, open: hole.open, field: replica.flatMap { $0.field }.map { LoginUI.local($0, in: screen) }, replica: replica != nil))
+            // Vidéo en plein écran : tant que la connexion n'est pas localisée (quelques secondes au
+            // plus), rien ne s'ouvre, plutôt qu'une grande zone qui se refermerait aussitôt.
+            .modifier(BackdropMask(fullScreen: fullScreen, size: size, open: hole.open && (replica != nil || !(fullScreen && video) || login.settled),
+                                   field: replica.flatMap { $0.field }.map { LoginUI.local($0, in: screen) }, replica: replica != nil))
             LinearGradient(colors: [.black.opacity(0.32), .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.34))
             if let replica { LoginReplica(layout: replica, screen: screen, size: size) }
         }
