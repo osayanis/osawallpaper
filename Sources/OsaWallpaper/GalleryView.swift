@@ -369,8 +369,12 @@ struct PreviewPane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("APERÇU").font(.system(size: 10.5, weight: .bold)).tracking(1.6).foregroundStyle(.white.opacity(0.4))
-                .padding(.top, 38)
+            HStack(alignment: .firstTextBaseline) {
+                Text("APERÇU").font(.system(size: 10.5, weight: .bold)).tracking(1.6).foregroundStyle(.white.opacity(0.4))
+                Spacer()
+                Text("v\(Updater.current)").font(.system(size: 10.5, weight: .medium).monospacedDigit()).foregroundStyle(.white.opacity(0.3))
+            }
+            .padding(.top, 38)
             LockMock(item: item)
             if let w = item {
                 VStack(alignment: .leading, spacing: 4) {
