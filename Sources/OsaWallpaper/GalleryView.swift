@@ -340,7 +340,7 @@ struct PreviewPane: View {
                 Text("v\(Updater.current)").font(.system(size: 10.5, weight: .medium).monospacedDigit()).foregroundStyle(.white.opacity(0.3))
             }
             .padding(.top, 38)
-            LockMock(item: item)
+            LockMock(item: item, fullScreen: prefs.lockFullScreen)
             if let w = item {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
@@ -366,7 +366,19 @@ struct PreviewPane: View {
             DesktopOptions(prefs: prefs, kind: store.current?.kind)
             Spacer(minLength: 0)
             VStack(alignment: .leading, spacing: 8) {
-                Text("Quand de la musique joue").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.7))
+                Text("Sur l’écran verrouillé").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.7))
+                Picker("", selection: $prefs.lockFullScreen) {
+                    Text("Fondu en bas").tag(false)
+                    Text("Plein écran").tag(true)
+                }
+                .pickerStyle(.segmented).labelsHidden()
+                if prefs.lockFullScreen {
+                    Text(prefs.desktopToo
+                         ? "Une petite fenêtre reste ouverte sur le champ du mot de passe de macOS."
+                         : "Une petite fenêtre reste ouverte sur le champ du mot de passe : active « Aussi sur le bureau » pour qu’elle se fonde dans ton fond.")
+                        .font(.system(size: 10.5)).foregroundStyle(.white.opacity(0.4)).fixedSize(horizontal: false, vertical: true)
+                }
+                Text("Quand de la musique joue").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.7)).padding(.top, 4)
                 Picker("", selection: $prefs.wallpaperOverMusic) {
                     Text("Pochette de l’album").tag(false)
                     Text("Garder mon fond").tag(true)
@@ -459,13 +471,20 @@ struct DesktopOptions: View {
 /// Maquette de l'écran verrouillé : le fond, la date, l'heure et le champ du mot de passe.
 struct LockMock: View {
     let item: Wallpaper?
+    var fullScreen = false
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
         Color.black
             .aspectRatio(16 / 10, contentMode: .fit)
             .overlay {
                 if let item {
-                    Thumb(url: item.thumb, fallback: fallbackThumb(item)).id(item.id).transition(.opacity)
+                    ZStack {
+                        // sous le fondu : la photo de session de macOS (ici, un dégradé neutre)
+                        LinearGradient(colors: [Color(red: 0.2, green: 0.2, blue: 0.26), Color(red: 0.1, green: 0.1, blue: 0.14)],
+                                       startPoint: .top, endPoint: .bottom)
+                        Thumb(url: item.thumb, fallback: fallbackThumb(item)).id(item.id).transition(.opacity)
+                            .mask { if fullScreen { Rectangle() } else { LockBackdrop.fade(from: 0.72, to: 0.98) } }
+                    }
                 } else {
                     LinearGradient(colors: [Color(red: 0.24, green: 0.16, blue: 0.4), Color(red: 0.06, green: 0.06, blue: 0.12)],
                                    startPoint: .top, endPoint: .bottom)
@@ -492,6 +511,7 @@ struct LockMock: View {
             .overlay(shape.strokeBorder(.white.opacity(0.14)))
             .shadow(color: .black.opacity(0.5), radius: 18, y: 10)
             .animation(.easeInOut(duration: 0.35), value: item?.id)
+            .animation(.easeInOut(duration: 0.35), value: fullScreen)
     }
 }
 

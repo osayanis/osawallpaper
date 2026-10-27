@@ -53,6 +53,8 @@ Menu OsaWallpaper → **Choisir un fond d’écran…** (⌘F) ouvre une galerie
 
 **Aussi sur le bureau** (dans la galerie, le menu ou les réglages) : le même fond devient celui de ton Mac déverrouillé. Pour une vidéo, tu choisis **Animé** (elle tourne en boucle derrière tes fenêtres, en pause dès que le Mac est verrouillé, en veille ou en économie d’énergie) ou **Image fixe** (une image tirée de la vidéo, zéro CPU). Ton fond d’origine est remis quand tu coupes l’option.
 
+**Fondu ou plein écran** : par défaut ton fond se fond vers le bas pour laisser voir ta photo de session et le champ du mot de passe. En **plein écran**, il couvre tout l’écran ; seule une petite fenêtre reste ouverte sur le champ du mot de passe (avec « Aussi sur le bureau », elle se fond dans ton fond).
+
 Sans musique, l’écran verrouillé montre ton fond avec l’heure et la météo. Quand un morceau joue, tu choisis ce qui s’affiche : la pochette de l’album ou ton fond, avec le lecteur par-dessus.
 
 <div align="center">

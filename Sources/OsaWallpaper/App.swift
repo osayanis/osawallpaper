@@ -253,6 +253,10 @@ struct SettingsView: View {
                         Toggle("Vidéo animée sur le bureau", isOn: $prefs.desktopAnimated)
                     }
                 }
+                Picker("Fond sur l’écran verrouillé", selection: $prefs.lockFullScreen) {
+                    Text("Fondu en bas").tag(false)
+                    Text("Plein écran").tag(true)
+                }
                 Toggle("Fond tiré de la pochette", isOn: $prefs.artBackground)
                 Toggle("Pochettes animées d’Apple Music (quand l’artiste en a une)", isOn: $prefs.motionArt)
                 Toggle("Paroles synchronisées", isOn: $prefs.showLyrics)
