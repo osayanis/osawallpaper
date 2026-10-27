@@ -382,7 +382,7 @@ struct InfoRow: View {
                 if prefs.showAirpods, let hp = devices.headphones {
                     dot
                     HStack(spacing: 5) {
-                        Image(systemName: HeadphoneGlyph.symbol(hp.name))
+                        Image(systemName: HeadphoneGlyph.symbol(hp))
                         if let l = HeadphoneGlyph.level(hp) { Text("\(l) %") }
                     }
                 }
@@ -403,12 +403,36 @@ struct InfoRow: View {
 }
 
 enum HeadphoneGlyph {
-    static func symbol(_ name: String) -> String {
+    /// Le dessin du modèle exact, d'après son Product ID Bluetooth (le nom peut avoir été renommé),
+    /// puis d'après le nom. Les symboles récents (AirPods 4…) se replient sur un voisin sous macOS 14.
+    static func symbol(_ h: Headphones) -> String {
+        let candidates = h.productID.flatMap { byID[$0] } ?? byName(h.name)
+        return candidates.first { NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil } ?? "headphones"
+    }
+
+    private static let byID: [Int: [String]] = [
+        0x2002: ["airpods"], 0x200F: ["airpods"],                                    // AirPods 1, 2
+        0x2013: ["airpods.gen3", "airpods"],                                         // AirPods 3
+        0x2019: ["airpods.gen4", "airpods.gen3"], 0x201B: ["airpods.gen4", "airpods.gen3"],  // AirPods 4 (et réduction de bruit)
+        0x200E: ["airpods.pro", "airpodspro"], 0x2014: ["airpods.pro", "airpodspro"],          // AirPods Pro, Pro 2
+        0x2024: ["airpods.pro", "airpodspro"], 0x2027: ["airpods.pro", "airpodspro"],          // Pro 2 USB-C, Pro 3
+        0x200A: ["airpods.max", "airpodsmax"], 0x201F: ["airpods.max", "airpodsmax"],          // AirPods Max, Max USB-C
+        0x2006: ["beats.headphones"], 0x2009: ["beats.headphones"], 0x200C: ["beats.headphones"],  // Solo3, Studio3, Solo Pro
+        0x2017: ["beats.headphones"], 0x2025: ["beats.headphones"],                  // Studio Pro, Solo 4
+        0x2003: ["beats.powerbeats3", "beats.earphones"], 0x200D: ["beats.powerbeats", "beats.earphones"],  // Powerbeats 3, 4
+        0x200B: ["beats.powerbeatspro"], 0x201D: ["beats.powerbeatspro"],            // Powerbeats Pro, Pro 2
+        0x2005: ["beats.earphones"], 0x2010: ["beats.earphones"],                    // BeatsX, Flex
+        0x2011: ["beats.studiobuds"], 0x2016: ["beats.studiobudsplus", "beats.studiobuds"],  // Studio Buds, Buds +
+        0x2012: ["beats.fitpro"], 0x2026: ["beats.solobuds", "beats.studiobuds"],    // Fit Pro, Solo Buds
+    ]
+
+    private static func byName(_ name: String) -> [String] {
         let n = name.lowercased()
-        if n.contains("max") { return "airpodsmax" }
-        if n.contains("pro") { return "airpodspro" }
-        if n.contains("airpods") { return "airpods" }
-        return "headphones"
+        if n.contains("max") { return ["airpods.max", "airpodsmax"] }
+        if n.contains("pro") { return ["airpods.pro", "airpodspro"] }
+        if n.contains("airpods") { return ["airpods"] }
+        if n.contains("beats") { return ["beats.headphones"] }
+        return ["headphones"]
     }
     static func level(_ h: Headphones) -> Int? {
         if let l = h.left, let r = h.right { return min(l, r) }
@@ -536,7 +560,7 @@ struct MusicCard: View {
                 Spacer()
                 CardButton(symbol: "forward.fill", size: 17) { music.control("next track") }
                 Spacer()
-                CardButton(symbol: devices.headphones.map { HeadphoneGlyph.symbol($0.name) } ?? "speaker.wave.2.fill", size: 15) {
+                CardButton(symbol: devices.headphones.map { HeadphoneGlyph.symbol($0) } ?? "speaker.wave.2.fill", size: 15) {
                     NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Sound-Settings.extension")!)
                 }
                 .help("Sortie audio")
@@ -617,7 +641,7 @@ struct ToastView: View {
         HStack(spacing: 10) {
             switch toast {
             case .headphones(let h, let vol):
-                Image(systemName: HeadphoneGlyph.symbol(h.name)).font(.system(size: 16)).frame(width: 22)
+                Image(systemName: HeadphoneGlyph.symbol(h)).font(.system(size: 16)).frame(width: 22)
                 Text(h.name).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
                 Spacer(minLength: 6)
                 if let v = vol {

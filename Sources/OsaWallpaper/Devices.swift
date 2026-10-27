@@ -8,7 +8,7 @@ import notify
 
 let log = Logger(subsystem: "com.osalabs.osawallpaper", category: "devices")
 
-struct Headphones: Equatable { var name: String; var level: Int?; var left: Int?; var right: Int?; var caseLevel: Int? }
+struct Headphones: Equatable { var name: String; var level: Int?; var left: Int?; var right: Int?; var caseLevel: Int?; var productID: Int? }
 struct Weather: Equatable { var temp: Int; var code: Int; var isDay: Bool; var city: String }
 
 enum Toast: Equatable, Identifiable {
@@ -163,7 +163,7 @@ final class Devices: ObservableObject {
         guard let v else { return }
         if case .headphones(let h, _) = toast { toast = .headphones(h, volume: m ? 0 : v); show(toast!, for: 2.5); return }
         guard Prefs.shared.showVolume else { return }
-        let sym = headphones.map { HeadphoneGlyph.symbol($0.name) }
+        let sym = headphones.map { HeadphoneGlyph.symbol($0) }
         show(.volume(v, muted: m, symbol: sym ?? Self.speakerSymbol(v, muted: m)), for: 1.8)
     }
 
@@ -335,7 +335,8 @@ final class Devices: ObservableObject {
             let found = Self.parseBluetooth(out, prefer: name)
             DispatchQueue.main.async {
                 guard self.headphones?.name == name else { return }
-                if let f = found {
+                if let id = found.model, self.headphones?.productID != id { self.headphones?.productID = id }
+                if let f = found.battery {
                     var h = self.headphones!
                     h.left = f.left; h.right = f.right; h.caseLevel = f.caseLevel; h.level = f.level
                     self.headphones = h
@@ -347,10 +348,12 @@ final class Devices: ObservableObject {
         }
     }
 
-    static func parseBluetooth(_ out: String, prefer: String) -> Headphones? {
+    /// `model` : le modèle exact (Product ID) de l'appareil nommé `prefer` ; `battery` : ses niveaux
+    /// (ou, à défaut, ceux du premier appareil qui en publie).
+    static func parseBluetooth(_ out: String, prefer: String) -> (battery: Headphones?, model: Int?) {
         var devices: [Headphones] = []
         var cur: Headphones?
-        func flush() { if let c = cur, c.left != nil || c.right != nil || c.level != nil { devices.append(c) } }
+        func flush() { if let c = cur { devices.append(c) } }
         for raw in out.components(separatedBy: "\n") {
             let indent = raw.prefix { $0 == " " }.count
             let line = raw.trimmingCharacters(in: .whitespaces)
@@ -365,10 +368,13 @@ final class Devices: ObservableObject {
                 else if let v = num("Right Battery Level:") { cur!.right = v }
                 else if let v = num("Case Battery Level:") { cur!.caseLevel = v }
                 else if let v = num("Battery Level:") { cur!.level = v }
+                else if line.hasPrefix("Product ID: 0x") { cur!.productID = Int(line.dropFirst(14), radix: 16) }
             }
         }
         flush()
-        return devices.first { $0.name == prefer } ?? devices.first
+        let withBattery = devices.filter { $0.left != nil || $0.right != nil || $0.level != nil }
+        return (withBattery.first { $0.name == prefer } ?? withBattery.first,
+                devices.first { $0.name == prefer && $0.productID != nil }?.productID)
     }
 
     // MARK: Météo (Open-Meteo, gratuit et sans clé)

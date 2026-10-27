@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var onboarding: NSWindow?
     private var gallery: NSWindow?
     private var desktop: DesktopWallpaper?
+    private var awake: ScreenAwake!
     private var bag = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ n: Notification) {
@@ -35,6 +36,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         screens = ScreenManager(music: music, devices: devices, prefs: prefs)
         screens.rebuild()
         desktop = DesktopWallpaper(store: WallpaperStore.shared, prefs: prefs, lock: screens.lock)
+        awake = ScreenAwake(lock: screens.lock, prefs: prefs)
+        if let s = ProcessInfo.processInfo.environment["OSAWALLPAPER_AWAKE_TEST"], let t = Double(s) { awake.test(seconds: t) }
         buildStatusItem()
         if !Demo.on {
             Updater.shared.canRelaunch = { [weak self] in
@@ -57,7 +60,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if Demo.on {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                self.devices.show(.headphones(Headphones(name: "AirPods Pro", left: 82, right: 79, caseLevel: 60), volume: 0.62), for: 6)
+                // OSAWALLPAPER_DEMO_HP=201F : la notif d'un modèle précis (Product ID Bluetooth)
+                let id = ProcessInfo.processInfo.environment["OSAWALLPAPER_DEMO_HP"].flatMap { Int($0, radix: 16) } ?? 0x2014
+                self.devices.show(.headphones(Headphones(name: "AirPods", left: 82, right: 79, caseLevel: 60, productID: id), volume: 0.62), for: 6)
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 9) { self.devices.show(.charging(64), for: 5) }
             DispatchQueue.main.asyncAfter(deadline: .now() + 15) { self.devices.show(.volume(0.56, muted: false, symbol: "speaker.wave.2.fill"), for: 3) }
@@ -338,6 +343,14 @@ struct SettingsView: View {
                     Text("Fondu en bas").tag(false)
                     Text("Plein écran").tag(true)
                 }
+                Picker("Écran allumé une fois verrouillé", selection: $prefs.lockAwakeMinutes) {
+                    Text("Comme macOS").tag(0)
+                    Text("1 minute").tag(1)
+                    Text("2 minutes").tag(2)
+                    Text("5 minutes").tag(5)
+                    Text("10 minutes").tag(10)
+                    Text("30 minutes").tag(30)
+                }
                 Toggle("Fond tiré de la pochette", isOn: $prefs.artBackground)
                 Toggle("Pochettes animées d’Apple Music (quand l’artiste en a une)", isOn: $prefs.motionArt)
                 Toggle("Paroles synchronisées", isOn: $prefs.showLyrics)
@@ -345,7 +358,7 @@ struct SettingsView: View {
                 Button(music.music == nil && wall.current == nil ? "Aperçu : lance d’abord un morceau" : "Aperçu (8 s)", action: onPreview)
                     .disabled(music.music == nil && wall.current == nil)
             } header: { Text("Écran verrouillé") } footer: {
-                Text("Visible seulement quand ton Mac est verrouillé (⌃⌘Q), avec un morceau en cours ou ton fond personnalisé.").foregroundStyle(.secondary)
+                Text("Visible seulement quand ton Mac est verrouillé (⌃⌘Q), avec un morceau en cours ou ton fond personnalisé. L’écran reste allumé le temps choisi après ta dernière action, puis macOS l’éteint (jamais en mode économie d’énergie).").foregroundStyle(.secondary)
             }
             Section("Partout") {
                 Toggle("AirPods et casques (batterie, volume)", isOn: $prefs.showAirpods)
@@ -381,13 +394,6 @@ struct SettingsView: View {
             }
             Section {
                 Toggle("Ouvrir au démarrage du Mac", isOn: Binding(get: { login }, set: { _ in LoginItem.toggle(); login = LoginItem.enabled }))
-                HStack {
-                    Button("Tester : AirPods") {
-                        devices.show(.headphones(devices.headphones ?? Headphones(name: "AirPods Pro", left: 82, right: 80, caseLevel: 64), volume: devices.volume ?? 0.6))
-                    }
-                    Button("Tester : charge") { devices.show(.charging(devices.battery?.percent ?? 82), for: 4) }
-                    Button("Tester : volume") { devices.show(.volume(devices.volume ?? 0.5, muted: false, symbol: "speaker.wave.2.fill"), for: 2) }
-                }
                 Toggle("Installer les mises à jour automatiquement", isOn: $prefs.autoUpdate)
                 HStack {
                     Text("Version \(Updater.current)").foregroundStyle(.secondary)
