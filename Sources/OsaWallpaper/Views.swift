@@ -180,7 +180,7 @@ struct MotionBackdrop: View {
         ZStack {
             MotionView(player: player)
                 .frame(width: size.width, height: size.height)
-                .bottomFade(!fullScreen, from: 0.66, to: 0.97)
+                .bottomFade(!fullScreen, from: 0.66, to: 0.97, size: size)
             LinearGradient(colors: [.black.opacity(0.35), .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.34))
             LinearGradient(colors: [.clear, .black.opacity(0.28), .clear], startPoint: UnitPoint(x: 0.5, y: 0.55), endPoint: UnitPoint(x: 0.5, y: 0.95))
         }
@@ -194,11 +194,11 @@ extension View {
     /// Fondu vers le bas (ta photo de session et le champ du mot de passe restent visibles), ou
     /// plein écran avec seulement une fenêtre douce sur la connexion de macOS.
     @ViewBuilder func lockMask(_ fullScreen: Bool, from a: CGFloat, to b: CGFloat, size: CGSize, open: Bool = true) -> some View {
-        if fullScreen { mask(LoginHole(size: size, open: open)) } else { mask(LockBackdrop.fade(from: a, to: b)) }
+        if fullScreen { mask(LoginHole(size: size, open: open)) } else { mask(LockBackdrop.fade(from: a, to: b, height: size.height)) }
     }
     /// Fondu vers le bas, ou rien (le fond couvre tout).
-    @ViewBuilder func bottomFade(_ on: Bool, from a: CGFloat, to b: CGFloat) -> some View {
-        if on { mask(LockBackdrop.fade(from: a, to: b)) } else { self }
+    @ViewBuilder func bottomFade(_ on: Bool, from a: CGFloat, to b: CGFloat, size: CGSize) -> some View {
+        if on { mask(LockBackdrop.fade(from: a, to: b, height: size.height)) } else { self }
     }
 }
 
@@ -239,8 +239,9 @@ struct BackdropMask: ViewModifier {
                 ZStack {
                     Rectangle()
                     if let f = field {
-                        Capsule().frame(width: f.width + 8, height: f.height + 8).position(x: f.midX, y: f.midY)
-                            .blur(radius: 3).opacity(open ? 1 : 0).blendMode(.destinationOut)
+                        // Juste le champ (et un liseré) : macOS le dessine sur notre image, posée en fond.
+                        Capsule().frame(width: f.width + 6, height: f.height + 6).position(x: f.midX, y: f.midY)
+                            .blur(radius: 1.5).opacity(open ? 1 : 0).blendMode(.destinationOut)
                     }
                 }
                 .compositingGroup()
@@ -324,13 +325,13 @@ struct LockBackdrop: View {
                     .scaleEffect(1.15)
                 RadialGradient(colors: [.white.opacity(0.10), .clear], center: UnitPoint(x: 0.5, y: 0.5), startRadius: 0, endRadius: size.height * 0.5)
             }
-            .bottomFade(!fullScreen, from: 0.5, to: 0.84)
+            .bottomFade(!fullScreen, from: 0.5, to: 0.84, size: size)
             // 2) …puis ses couleurs, plus bas : le passage vers ton fond d'écran se fait en douceur.
-            if palette.count == 9 { mesh.opacity(0.7).bottomFade(!fullScreen, from: 0.6, to: 0.99) }
+            if palette.count == 9 { mesh.opacity(0.7).bottomFade(!fullScreen, from: 0.6, to: 0.99, size: size) }
             Image(nsImage: Noise.image).resizable(resizingMode: .tile).opacity(0.05).blendMode(.overlay)
-                .bottomFade(!fullScreen, from: 0.6, to: 0.95)
+                .bottomFade(!fullScreen, from: 0.6, to: 0.95, size: size)
             RadialGradient(colors: [.clear, .black.opacity(0.4)], center: UnitPoint(x: 0.5, y: 0.4), startRadius: size.height * 0.35, endRadius: size.width * 0.75)
-                .bottomFade(!fullScreen, from: 0.55, to: 0.9)
+                .bottomFade(!fullScreen, from: 0.55, to: 0.9, size: size)
             LinearGradient(colors: [.black.opacity(0.3), .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.32))
         }
         .frame(width: size.width, height: size.height)
@@ -338,8 +339,15 @@ struct LockBackdrop: View {
     }
 
     /// Masque opaque → transparent avec une courbe douce (smoothstep) plutôt qu'une ligne droite :
-    /// pas de « marche » visible là où le fond s'arrête.
-    static func fade(from a: CGFloat, to b: CGFloat) -> LinearGradient {
+    /// pas de « marche » visible là où le fond s'arrête. Avec la hauteur de l'écran, le fondu est
+    /// fini juste au-dessus du champ du mot de passe (à ~71 pt du bas) : rien de notre fond sur lui,
+    /// sinon son contraste varierait du haut au bas du champ.
+    static func fade(from a: CGFloat, to b: CGFloat, height: CGFloat? = nil) -> LinearGradient {
+        var a = a, b = b
+        if let h = height, h > 200 {
+            b = min(b, (h - 80) / h)
+            a = min(a, b - 0.1)
+        }
         let n = 14
         var stops: [Gradient.Stop] = [.init(color: .black, location: 0)]
         for i in 0...n {
