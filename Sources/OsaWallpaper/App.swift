@@ -251,13 +251,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func preview() { screens.showPreview() }
-    @objc private func toggleLock() { prefs.lockScreen.toggle() }
-    @objc private func toggleArt() { prefs.artBackground.toggle() }
-    @objc private func toggleDesktop() { prefs.desktopToo.toggle() }
-    @objc private func toggleWeather() { prefs.weatherInMenuBar.toggle() }
-    @objc private func toggleLogin() { LoginItem.toggle() }
-    @objc private func checkUpdates() { Updater.shared.checkNow() }
-    @objc private func installUpdate() { if let r = Updater.shared.available { Updater.shared.install(r) } }
 }
 
 extension AppDelegate: NSMenuDelegate {
@@ -280,22 +273,11 @@ extension AppDelegate: NSMenuDelegate {
             i.isEnabled = false; menu.addItem(i)
         }
         if menu.items.count > 0 { menu.addItem(.separator()) }
-        item("Sur l’écran verrouillé", #selector(toggleLock), on: prefs.lockScreen)
-        item("Fond tiré de la pochette", #selector(toggleArt), on: prefs.artBackground)
-        item("Météo dans la barre de menus", #selector(toggleWeather), on: prefs.weatherInMenuBar)
-        item("Choisir un fond d’écran…", #selector(openGallery), "f")
-        item("Aussi sur le bureau", #selector(toggleDesktop), on: prefs.desktopToo, enabled: WallpaperStore.shared.current != nil)
+        // Le reste est dans l'onglet « Réglages » de la fenêtre.
+        item("Ouvrir OsaWallpaper…", #selector(openGallery), "o")
         let canPreview = music.music != nil || WallpaperStore.shared.current != nil
         item(canPreview ? "Aperçu de l’écran verrouillé" : "Aperçu (lance un morceau)", #selector(preview), enabled: canPreview)
-        menu.addItem(.separator())
         item("Réglages…", #selector(openSettings), ",")
-        item("Bienvenue…", #selector(openOnboarding))
-        item("Ouvrir au démarrage du Mac", #selector(toggleLogin), on: LoginItem.enabled)
-        if let r = Updater.shared.available {
-            item("Installer la version \(r.version)…", #selector(installUpdate))
-        } else {
-            item("Rechercher des mises à jour…", #selector(checkUpdates))
-        }
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quitter OsaWallpaper", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     }
@@ -409,6 +391,7 @@ struct SettingsView: View {
                 HStack {
                     Text("Version \(Updater.current)").foregroundStyle(.secondary)
                     Spacer()
+                    Button("Revoir la bienvenue") { AppDelegate.shared?.openOnboarding() }
                     Button("Rechercher maintenant") { Updater.shared.checkNow() }
                 }
             } header: { Text("Général") } footer: {
