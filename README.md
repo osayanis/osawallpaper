@@ -39,7 +39,7 @@ Dès que tu déverrouilles, tout disparaît : ton bureau reste exactement comme 
 
 ## 🖼️ Ton propre fond d’écran
 
-Menu OsaWallpaper → **Choisir un fond d’écran…** (⌘F) ouvre une galerie avec un aperçu en direct sur une maquette de l’écran verrouillé :
+Menu OsaWallpaper → **Ouvrir OsaWallpaper…** ouvre une galerie avec un aperçu en direct sur une maquette de l’écran verrouillé :
 
 <div align="center">
   <img src=".github/assets/gallery.jpg" width="900" alt="La galerie de fonds d'écran">
@@ -51,7 +51,7 @@ Menu OsaWallpaper → **Choisir un fond d’écran…** (⌘F) ouvre une galerie
 - **Ton lien** : colle une vidéo **YouTube** (lue en direct par le lecteur officiel, en sourdine) ou un lien direct **.mp4 / .mov / .jpg / .png**. Tu peux aussi glisser un fichier depuis ton Mac.
 - **Mes fonds** : les 40 derniers fonds utilisés, pour revenir à l’un d’eux en un clic.
 
-**Aussi sur le bureau** (dans la galerie, le menu ou les réglages) : le même fond devient celui de ton Mac déverrouillé. Pour une vidéo, tu choisis **Animé** (elle tourne en boucle derrière tes fenêtres, en pause dès que le Mac est verrouillé, en veille ou en économie d’énergie) ou **Image fixe** (une image tirée de la vidéo, zéro CPU). Ton fond d’origine est remis quand tu coupes l’option.
+**Aussi sur le bureau** (dans la galerie ou les réglages) : le même fond devient celui de ton Mac déverrouillé. Pour une vidéo, tu choisis **Animé** (elle tourne en boucle derrière tes fenêtres, en pause dès que le Mac est verrouillé, en veille ou en économie d’énergie) ou **Image fixe** (une image tirée de la vidéo, zéro CPU). Ton fond d’origine est remis quand tu coupes l’option.
 
 **Fondu ou plein écran** : par défaut ton fond se fond vers le bas pour laisser voir ta photo de session et le champ du mot de passe. En **plein écran**, il couvre tout l’écran ; ta photo de session, ton nom et le champ du mot de passe restent visibles par-dessus, sans trou (pour ça, pendant que le Mac est verrouillé seulement, la même image est posée en fond macOS ; ton bureau retrouve son fond au déverrouillage). Pour une vidéo, OsaWallpaper redessine ta photo et ton nom à leur place exacte (lue par l’Accessibilité) : la vidéo tourne partout, seul le champ du mot de passe reste ouvert.
 
