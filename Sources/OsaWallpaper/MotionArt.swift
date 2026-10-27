@@ -149,12 +149,53 @@ final class MotionPlayer: ObservableObject {
         p.preventsDisplaySleepDuringVideoPlayback = false
         looper = AVPlayerLooper(player: p, templateItem: AVPlayerItem(url: u))
         player = p
+        if wanted { p.play() }
     }
 
     /// Ne lit que lorsqu'on la voit (Mac verrouillé) : zéro coût le reste du temps.
     func setVisible(_ v: Bool) {
+        wanted = v
         guard let player else { return }
-        if v { if player.rate == 0 { player.play() } } else if player.rate != 0 { player.pause() }
+        if v {
+            player.play()
+            if watchdog == nil {
+                watchdog = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.check() }
+            }
+        } else {
+            watchdog?.invalidate(); watchdog = nil; stalledSince = nil
+            if player.rate != 0 { player.pause() }
+        }
+    }
+
+    private var wanted = false
+    private var watchdog: Timer?
+    private var stalledSince: Date?
+
+    /// Après plusieurs verrouillages, macOS peut mettre la vidéo en pause (écran éteint) ou la
+    /// bloquer : tant qu'elle doit tourner, on la relance, et on la recharge si elle reste bloquée.
+    private func check() {
+        guard wanted, let p = player else { return }
+        if looper?.status == .failed || p.currentItem == nil || p.currentItem?.status == .failed { reload(); return }
+        switch p.timeControlStatus {
+        case .playing:
+            stalledSince = nil
+        case .paused:
+            p.play()
+        case .waitingToPlayAtSpecifiedRate:
+            if let t = stalledSince { if Date().timeIntervalSince(t) > 4 { reload() } } else { stalledSince = Date() }
+        @unknown default:
+            break
+        }
+    }
+
+    /// Recharge la vidéo dans le même lecteur (les vues qui l'affichent n'ont rien à refaire).
+    private func reload() {
+        guard let p = player, let u = url else { return }
+        stalledSince = nil
+        looper?.disableLooping()
+        p.removeAllItems()
+        looper = AVPlayerLooper(player: p, templateItem: AVPlayerItem(url: u))
+        if wanted { p.play() }
     }
 }
 

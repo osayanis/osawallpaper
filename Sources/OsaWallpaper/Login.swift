@@ -43,11 +43,20 @@ final class LoginUI: ObservableObject {
             if !logged { log.notice("connexion : Accessibilité non autorisée, zone ouverte gardée"); logged = true }
             return
         }
-        var found = Layout(), seen: [String] = []
+        var found = Layout(), seen: [String] = [], texts: [CGRect] = []
         for app in NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.loginwindow") {
             let root = AXUIElementCreateApplication(app.processIdentifier)
             AXUIElementSetMessagingTimeout(root, 0.3)
-            walk(root, depth: 0, &found, &seen)
+            walk(root, depth: 0, &found, &seen, &texts)
+        }
+        // Le champ du mot de passe n'est souvent exposé que par son texte (« Saisir le mot de passe ») :
+        // le texte large juste sous ton nom, centré sur lui. Sa vraie taille compte : une ouverture
+        // plus petite que le champ laisse la vidéo mordre sur ses bords.
+        if found.field == nil, let n = found.name {
+            found.field = texts.filter { t in
+                t.minY >= n.maxY - 2 && t.minY - n.maxY < 60 && abs(t.midX - n.midX) < 40
+                    && (120...420).contains(t.width) && (18...60).contains(t.height)
+            }.min { $0.minY < $1.minY }
         }
         if !logged { log.notice("connexion : \(seen.prefix(80).joined(separator: " | "), privacy: .public)"); logged = true }
         var l: Layout? = found.field == nil && found.avatar == nil && found.name == nil ? nil : found
@@ -55,7 +64,7 @@ final class LoginUI: ObservableObject {
         // l'écran natif (photo ronde au-dessus, champ du mot de passe en dessous).
         if let n = l?.name {
             if l?.avatar == nil { l?.avatar = CGRect(x: n.midX - 30, y: n.minY - 10 - 60, width: 60, height: 60) }
-            if l?.field == nil { l?.field = CGRect(x: n.midX - 100, y: n.maxY + 12, width: 200, height: 30) }
+            if l?.field == nil { l?.field = CGRect(x: n.midX - 106, y: n.maxY + 12, width: 212, height: 32) }   // mesuré sur macOS 26
         }
         if l != layout {
             if found.name != nil || found.field != nil {
@@ -66,7 +75,7 @@ final class LoginUI: ObservableObject {
         }
     }
 
-    private func walk(_ e: AXUIElement, depth: Int, _ f: inout Layout, _ seen: inout [String]) {
+    private func walk(_ e: AXUIElement, depth: Int, _ f: inout Layout, _ seen: inout [String], _ texts: inout [CGRect]) {
         guard depth < 16 else { return }
         let role = Self.attr(e, kAXRoleAttribute) as? String ?? ""
         if let r = Self.frame(e), r.width > 2, r.height > 2 {
@@ -79,11 +88,11 @@ final class LoginUI: ObservableObject {
                 if abs(r.width - r.height) < 6, (32...220).contains(r.width), f.avatar == nil || r.width > f.avatar!.width { f.avatar = r }
             case kAXStaticTextRole:
                 let v = Self.attr(e, kAXValueAttribute) as? String ?? ""
-                if v == fullName || v == NSUserName() { f.name = r }
+                if v == fullName || v == NSUserName() { f.name = r } else { texts.append(r) }
             default: break
             }
         }
-        for c in Self.attr(e, kAXChildrenAttribute) as? [AXUIElement] ?? [] { walk(c, depth: depth + 1, &f, &seen) }
+        for c in Self.attr(e, kAXChildrenAttribute) as? [AXUIElement] ?? [] { walk(c, depth: depth + 1, &f, &seen, &texts) }
     }
 
     private static func attr(_ e: AXUIElement, _ a: String) -> AnyObject? {

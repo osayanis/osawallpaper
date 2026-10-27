@@ -103,7 +103,7 @@ Pas de caméra, pas de micro, pas de localisation : la météo utilise une posit
 2. Ouvre-la. L’app n’est pas notarisée : la première fois, fais **clic droit → Ouvrir**.
 3. Suis la fenêtre de bienvenue, lance un morceau, puis verrouille ton Mac avec <kbd>⌃</kbd> <kbd>⌘</kbd> <kbd>Q</kbd>.
 
-Dans la barre des menus, la mascotte tourne doucement sur elle-même (animée par Core Animation : l’app ne fait rien à chaque image). Son menu donne la météo, le morceau en cours, l’accès à l’app, à l’aperçu et aux réglages.
+Dans la barre des menus, la mascotte se promène en rond, en 3D : elle se tourne dans le sens de sa marche, passe devant puis au fond, un pied après l’autre (animée par Core Animation : l’app ne fait rien à chaque image). Son menu donne la météo, le morceau en cours, l’accès à l’app, à l’aperçu et aux réglages.
 
 ### 🔄 Mises à jour
 
