@@ -91,7 +91,7 @@ final class LockWindow {
         let top = max(screen.frame.maxY - screen.visibleFrame.maxY, screen.safeAreaInsets.top)
         let hits = self.hits
         panel.contentView = FirstMouseHostingView(rootView:
-            LockView(music: music, devices: devices, prefs: prefs, lock: lock, cursor: cursor, size: size, topInset: top)
+            LockView(music: music, devices: devices, prefs: prefs, lock: lock, cursor: cursor, size: size, topInset: top, screenFrame: screen.frame)
                 .frame(width: size.width, height: size.height)
                 .onPreferenceChange(HitKey.self) { hits.rects = $0 })
         panel.lift()

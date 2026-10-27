@@ -81,6 +81,7 @@ final class DesktopWallpaper {
     func lockChanged(_ locked: Bool) {
         lockSwap += 1
         let n = lockSwap
+        if locked && prefs.lockFullScreen && !Demo.on { LoginUI.shared.start() } else if !Demo.on { LoginUI.shared.stop() }
         guard locked else {
             LockHole.shared.open = Demo.on
             restoreAfterLock()
@@ -172,20 +173,26 @@ final class DesktopWallpaper {
 
     // MARK: Image fixe
 
-    /// Photo : le fichier. Vidéo : une image tirée de la vidéo. YouTube : la miniature HD.
+    /// Photo : le fichier. Vidéo : une image tirée de la vidéo, en pleine qualité. YouTube : la miniature HD.
     static func stillImage(for w: Wallpaper) async -> URL? {
-        let out = WallpaperStore.dir.appendingPathComponent(w.id.replacingOccurrences(of: "/", with: "-") + "-desktop.jpg")
+        let base = w.id.replacingOccurrences(of: "/", with: "-")
+        let out = WallpaperStore.dir.appendingPathComponent(base + (w.kind == .video ? "-still.png" : "-desktop.jpg"))
         switch w.kind {
         case .image:
             return w.localURL
         case .video:
             if FileManager.default.fileExists(atPath: out.path) { return out }
             guard let f = w.localURL else { return nil }
+            // L'image exacte (pas l'image clé la plus proche, souvent plus floue), en taille réelle,
+            // enregistrée sans perte : pas de différence visible avec la vidéo qui tourne.
             let g = AVAssetImageGenerator(asset: AVURLAsset(url: f))
             g.appliesPreferredTrackTransform = true
+            g.requestedTimeToleranceBefore = .zero
+            g.requestedTimeToleranceAfter = .zero
+            g.maximumSize = .zero
             guard let cg = try? await g.image(at: CMTime(seconds: 1, preferredTimescale: 600)).image,
-                  let jpg = NSBitmapImageRep(cgImage: cg).representation(using: .jpeg, properties: [.compressionFactor: 0.9]) else { return nil }
-            return (try? jpg.write(to: out)) != nil ? out : nil
+                  let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) else { return nil }
+            return (try? png.write(to: out)) != nil ? out : nil
         case .youtube:
             if FileManager.default.fileExists(atPath: out.path) { return out }
             guard let id = w.youtubeID else { return nil }

@@ -52,6 +52,7 @@ struct LockView: View {
     let cursor: CursorModel
     let size: CGSize
     let topInset: CGFloat
+    var screenFrame: CGRect = .zero
 
     var body: some View {
         let h = size.height
@@ -69,7 +70,7 @@ struct LockView: View {
         ZStack(alignment: .top) {
             if show {
                 if custom {
-                    CustomBackdrop(store: wall, size: size, fullScreen: prefs.lockFullScreen).id(wall.current?.id).transition(.opacity)
+                    CustomBackdrop(store: wall, size: size, fullScreen: prefs.lockFullScreen, screen: screenFrame).id(wall.current?.id).transition(.opacity)
                 } else if moving, let p = music.motionPlayer.player {
                     MotionBackdrop(player: p, size: size).transition(.opacity)
                 } else if full, let b = music.backdrop {
@@ -121,8 +122,14 @@ struct CustomBackdrop: View {
     @ObservedObject var store: WallpaperStore
     let size: CGSize
     var fullScreen = false
+    var screen: CGRect = .zero
     @ObservedObject private var hole = LockHole.shared
+    @ObservedObject private var login = LoginUI.shared
     var body: some View {
+        // Vidéo en plein écran : si l'on sait où macOS dessine la connexion, la vidéo couvre tout,
+        // ta photo et ton nom sont redessinés, seul le champ du mot de passe reste ouvert.
+        let video = store.current.map { $0.kind != .image } ?? false
+        let replica = fullScreen && video ? login.layout : nil
         ZStack {
             Group {
                 switch store.current?.kind {
@@ -138,8 +145,9 @@ struct CustomBackdrop: View {
             }
             .frame(width: size.width, height: size.height)
             .clipped()
-            .lockMask(fullScreen, from: 0.72, to: 0.98, size: size, open: hole.open)
+            .modifier(BackdropMask(fullScreen: fullScreen, size: size, open: hole.open, field: replica.flatMap { $0.field }.map { LoginUI.local($0, in: screen) }, replica: replica != nil))
             LinearGradient(colors: [.black.opacity(0.32), .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.34))
+            if let replica { LoginReplica(layout: replica, screen: screen, size: size) }
         }
         .frame(width: size.width, height: size.height)
         .clipped()
@@ -171,6 +179,58 @@ extension View {
     /// plein écran avec seulement une fenêtre douce sur la connexion de macOS.
     @ViewBuilder func lockMask(_ fullScreen: Bool, from a: CGFloat, to b: CGFloat, size: CGSize, open: Bool = true) -> some View {
         if fullScreen { mask(LoginHole(size: size, open: open)) } else { mask(LockBackdrop.fade(from: a, to: b)) }
+    }
+}
+
+/// Masque du fond : fondu, zone ouverte sur la connexion, ou (vidéo, connexion localisée) seulement
+/// le champ du mot de passe.
+struct BackdropMask: ViewModifier {
+    let fullScreen: Bool, size: CGSize, open: Bool
+    let field: CGRect?
+    let replica: Bool
+    func body(content: Content) -> some View {
+        if replica {
+            content.mask {
+                ZStack {
+                    Rectangle()
+                    if let f = field {
+                        Capsule().frame(width: f.width + 8, height: f.height + 8).position(x: f.midX, y: f.midY)
+                            .blur(radius: 3).opacity(open ? 1 : 0).blendMode(.destinationOut)
+                    }
+                }
+                .compositingGroup()
+            }
+        } else {
+            content.lockMask(fullScreen, from: 0.72, to: 0.98, size: size, open: open)
+        }
+    }
+}
+
+/// Ta photo de session et ton nom, redessinés à la place exacte de ceux de macOS (cachés sous la vidéo).
+struct LoginReplica: View {
+    let layout: LoginUI.Layout
+    let screen: CGRect
+    let size: CGSize
+    var body: some View {
+        ZStack {
+            if let a = layout.avatar.map({ LoginUI.local($0, in: screen) }) {
+                Group {
+                    if let p = LoginUI.shared.picture { Image(nsImage: p).resizable().scaledToFill() }
+                    else { Circle().fill(.white.opacity(0.25)).overlay(Image(systemName: "person.fill").font(.system(size: a.width * 0.45))) }
+                }
+                .frame(width: a.width, height: a.height).clipShape(Circle())
+                .shadow(color: .black.opacity(0.25), radius: 8, y: 2)
+                .position(x: a.midX, y: a.midY)
+            }
+            if let n = layout.name.map({ LoginUI.local($0, in: screen) }) {
+                Text(LoginUI.shared.fullName)
+                    .font(.system(size: max(11, n.height * 0.78), weight: .semibold)).foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.3), radius: 6, y: 1)
+                    .fixedSize().position(x: n.midX, y: n.midY)
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .allowsHitTesting(false)
     }
 }
 
@@ -586,6 +646,12 @@ struct ToastView: View {
                 MascotNap()
                 Text("App mise en arrière-plan").font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
                 Spacer(minLength: 0)
+            case .updated(let v):
+                Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 24, height: 24)
+                    .symbolEffect(.bounce, value: v)
+                Text("Mise à jour installée").font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
+                Spacer(minLength: 4)
+                Text("v\(v)").font(.system(size: 12, weight: .semibold).monospacedDigit()).foregroundStyle(.white.opacity(0.6))
             }
         }
         .padding(.leading, 14).padding(.trailing, 10)
