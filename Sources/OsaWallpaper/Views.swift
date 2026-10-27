@@ -49,6 +49,7 @@ struct LockView: View {
     @ObservedObject var prefs: Prefs
     @ObservedObject var lock: LockState
     @ObservedObject var wall = WallpaperStore.shared
+    @ObservedObject private var login = LoginUI.shared
     let cursor: CursorModel
     let size: CGSize
     let topInset: CGFloat
@@ -65,16 +66,18 @@ struct LockView: View {
         let full = custom || musicFull
         let art = min(h * 0.33, size.width * 0.3, 400)
         let video = show && custom && wall.current?.kind == .video
+        // Plein écran, ou économiseur d'écran sous l'écran verrouillé (même en mode fondu : on le verrait en bas).
+        let cover = prefs.lockFullScreen || login.saver
         ZStack(alignment: .top) {
             if show {
                 if custom {
-                    CustomBackdrop(store: wall, size: size, fullScreen: prefs.lockFullScreen, screen: screenFrame).id(wall.current?.id).transition(.opacity)
+                    CustomBackdrop(store: wall, size: size, fullScreen: cover, screen: screenFrame).id(wall.current?.id).transition(.opacity)
                 } else if moving, let p = music.motionPlayer.player {
-                    MotionBackdrop(player: p, size: size, fullScreen: prefs.lockFullScreen)
-                        .modifier(FullLockCover(on: prefs.lockFullScreen, size: size, screen: screenFrame)).transition(.opacity)
+                    MotionBackdrop(player: p, size: size, fullScreen: cover)
+                        .modifier(FullLockCover(on: cover, size: size, screen: screenFrame)).transition(.opacity)
                 } else if full, let b = music.backdrop {
-                    LockBackdrop(image: b, palette: music.palette, size: size, fullScreen: prefs.lockFullScreen)
-                        .modifier(FullLockCover(on: prefs.lockFullScreen, size: size, screen: screenFrame))
+                    LockBackdrop(image: b, palette: music.palette, size: size, fullScreen: cover)
+                        .modifier(FullLockCover(on: cover, size: size, screen: screenFrame))
                         .id(ObjectIdentifier(b)).transition(.opacity)
                 }
                 VStack(spacing: 0) {
@@ -143,8 +146,10 @@ struct CustomBackdrop: View {
     var body: some View {
         // Vidéo en plein écran : si l'on sait où macOS dessine la connexion, la vidéo couvre tout,
         // ta photo et ton nom sont redessinés, seul le champ du mot de passe reste ouvert.
+        // Une photo que macOS a aussi en fond : la vraie connexion de macOS, vue à travers une zone
+        // douce, sur la même image. Sinon (vidéo, ou fond de macOS non remplacé) on la redessine.
         let video = store.current.map { $0.kind != .image } ?? false
-        let replica = fullScreen && video ? login.layout : nil
+        let replica = fullScreen && (video || !hole.matched) ? login.layout : nil
         ZStack {
             Group {
                 switch store.current?.kind {
@@ -160,10 +165,9 @@ struct CustomBackdrop: View {
             }
             .frame(width: size.width, height: size.height)
             .clipped()
-            // Vidéo en plein écran : tant que la connexion n'est pas localisée (quelques secondes au
-            // plus), rien ne s'ouvre, plutôt qu'une grande zone qui se refermerait aussitôt.
-            .modifier(BackdropMask(fullScreen: fullScreen, size: size, open: hole.open && (replica != nil || !(fullScreen && video) || login.settled),
-                                   field: replica.flatMap { $0.field }.map { LoginUI.local($0, in: screen) }, replica: replica != nil))
+            .modifier(BackdropMask(fullScreen: fullScreen, size: size, open: hole.open,
+                                   field: replica.flatMap { $0.field }.map { LoginUI.local($0, in: screen) }, replica: replica != nil,
+                                   still: !video && hole.matched, screen: screen))
             LinearGradient(colors: [.black.opacity(0.32), .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.34))
             if let replica { LoginReplica(layout: replica, screen: screen, size: size) }
         }
@@ -219,7 +223,8 @@ struct FullLockCover: ViewModifier {
             let replica = login.layout
             ZStack {
                 content.modifier(BackdropMask(fullScreen: true, size: size, open: hole.open,
-                                              field: replica?.field.map { LoginUI.local($0, in: screen) }, replica: replica != nil))
+                                              field: replica?.field.map { LoginUI.local($0, in: screen) }, replica: replica != nil,
+                                              still: false, screen: screen))
                 if let replica { LoginReplica(layout: replica, screen: screen, size: size) }
             }
             .frame(width: size.width, height: size.height)
@@ -230,14 +235,24 @@ struct FullLockCover: ViewModifier {
     }
 }
 
-/// Masque du fond : fondu, zone ouverte sur la connexion, ou (vidéo, connexion localisée) seulement
-/// le champ du mot de passe.
+/// Masque du fond. Plein écran : seul le champ du mot de passe est ouvert (connexion localisée),
+/// sinon rien, pour ne jamais montrer ce que macOS affiche dessous (économiseur d'écran, ancien
+/// fond…). La zone douce autour de la connexion ne sert que de secours : sans l'Accessibilité, ou
+/// si tu touches le Mac et que la connexion reste introuvable ; et seulement sur l'écran où macOS
+/// l'affiche. Fondu : le fond s'efface vers le bas. Économiseur d'écran : tout est couvert.
 struct BackdropMask: ViewModifier {
     let fullScreen: Bool, size: CGSize, open: Bool
     let field: CGRect?
     let replica: Bool
+    /// Une photo, posée telle quelle en fond de macOS : la zone douce montre exactement la même image.
+    var still = false
+    var screen: CGRect = .zero
+    @ObservedObject private var login = LoginUI.shared
     func body(content: Content) -> some View {
-        if replica {
+        let main = screen == .zero || screen.origin == (NSScreen.screens.first?.frame.origin ?? .zero)
+        if login.saver || (!main && fullScreen) {
+            content
+        } else if replica {
             content.mask {
                 ZStack {
                     Rectangle()
@@ -249,6 +264,8 @@ struct BackdropMask: ViewModifier {
                 }
                 .compositingGroup()
             }
+        } else if fullScreen && login.trusted && !login.blind && !still {
+            content
         } else {
             content.lockMask(fullScreen, from: 0.72, to: 0.98, size: size, open: open)
         }
@@ -288,6 +305,8 @@ struct LoginReplica: View {
 final class LockHole: ObservableObject {
     static let shared = LockHole()
     @Published var open = false
+    /// macOS a bien notre photo en fond, sous l'écran verrouillé (pas son fond dynamique, ni l'ancien).
+    @Published var matched = false
 }
 
 /// Masque plein écran : tout est opaque sauf une ellipse floue en bas au centre, là où macOS
