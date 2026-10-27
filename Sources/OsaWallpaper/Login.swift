@@ -14,6 +14,9 @@ final class LoginUI: ObservableObject {
     /// Coordonnées globales de l'Accessibilité (origine en haut à gauche de l'écran principal).
     struct Layout: Equatable { var avatar: CGRect?; var name: CGRect?; var field: CGRect? }
     @Published private(set) var layout: Layout?
+    /// Fini de chercher (connexion trouvée, 4 s passées, ou pas d'Accessibilité) : sans connexion
+    /// localisée, on peut alors ouvrir la zone douce autour d'elle.
+    @Published private(set) var settled = true
 
     let fullName = NSFullUserName()
     lazy var picture: NSImage? = CBIdentity(name: NSUserName(), authority: .default())?.image
@@ -26,16 +29,21 @@ final class LoginUI: ObservableObject {
     func start() {
         stop()
         logged = false
+        settled = !AXIsProcessTrusted()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+            if self?.timer != nil { self?.settled = true }
+        }
         scan()
         timer = Timer.scheduledTimer(withTimeInterval: 0.7, repeats: true) { [weak self] _ in self?.scan() }
     }
 
     /// Tests visuels (mode démo) : une connexion placée comme celle de macOS.
-    func demo(_ l: Layout) { layout = l }
+    func demo(_ l: Layout) { layout = l; settled = true }
 
     func stop() {
         timer?.invalidate(); timer = nil
         if layout != nil { layout = nil }
+        if !settled { settled = true }
     }
 
     private func scan() {
@@ -71,6 +79,7 @@ final class LoginUI: ObservableObject {
                 log.notice("connexion, arbre : \(seen.prefix(120).joined(separator: " | "), privacy: .public)")
             }
             layout = l
+            if l != nil { settled = true }
             log.notice("connexion : photo \(String(describing: l?.avatar), privacy: .public) nom \(String(describing: l?.name), privacy: .public) champ \(String(describing: l?.field), privacy: .public)")
         }
     }

@@ -240,7 +240,7 @@ final class DesktopWallpaper {
     /// Photo : le fichier. Vidéo : une image tirée de la vidéo, en pleine qualité. YouTube : la miniature HD.
     static func stillImage(for w: Wallpaper) async -> URL? {
         let base = w.id.replacingOccurrences(of: "/", with: "-")
-        let out = WallpaperStore.dir.appendingPathComponent(base + (w.kind == .video ? "-still.png" : "-desktop.jpg"))
+        let out = WallpaperStore.dir.appendingPathComponent(base + (w.kind == .video ? "-still.png" : "-still169.jpg"))
         switch w.kind {
         case .image:
             return w.localURL
@@ -261,10 +261,17 @@ final class DesktopWallpaper {
             if FileManager.default.fileExists(atPath: out.path) { return out }
             guard let id = w.youtubeID else { return nil }
             for q in ["maxresdefault", "sddefault", "hqdefault"] {
-                if let u = URL(string: "https://i.ytimg.com/vi/\(id)/\(q).jpg"),
-                   let (d, r) = try? await URLSession.shared.data(from: u), (r as? HTTPURLResponse)?.statusCode == 200 {
-                    return (try? d.write(to: out)) != nil ? out : nil
-                }
+                guard let u = URL(string: "https://i.ytimg.com/vi/\(id)/\(q).jpg"),
+                      let (d, r) = try? await URLSession.shared.data(from: u), (r as? HTTPURLResponse)?.statusCode == 200,
+                      let rep = NSBitmapImageRep(data: d), let cg = rep.cgImage else { continue }
+                // Sans miniature HD, YouTube donne une image 4:3 avec des bandes noires en haut et en
+                // bas : on garde le centre en 16:9 (sinon macOS montre une bande noire sous ta photo
+                // de session et le champ du mot de passe).
+                var img = cg
+                if Double(cg.width) / Double(max(1, cg.height)) < 1.5,
+                   let c = cg.cropping(to: CGRect(x: 0, y: cg.height / 8, width: cg.width, height: cg.height * 3 / 4)) { img = c }
+                guard let jpg = NSBitmapImageRep(cgImage: img).representation(using: .jpeg, properties: [.compressionFactor: 0.92]) else { continue }
+                return (try? jpg.write(to: out)) != nil ? out : nil
             }
             return nil
         }
