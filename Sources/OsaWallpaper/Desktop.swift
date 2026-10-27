@@ -10,8 +10,9 @@ import os
 // - Vidéo « animée » : une fenêtre au niveau du bureau (sous les icônes, derrière toutes les
 //   fenêtres) lit la vidéo en boucle, en pause dès que le Mac est verrouillé, en veille ou en
 //   mode économie d'énergie.
-// - « Plein écran » sur l'écran verrouillé pose aussi l'image fixe : la zone laissée ouverte sur la
-//   connexion de macOS (photo, nom, mot de passe) montre alors la même image, sans trou visible.
+// - « Plein écran » sur l'écran verrouillé pose aussi l'image fixe, mais seulement pendant que le Mac
+//   est verrouillé : la zone laissée ouverte sur la connexion de macOS (photo, nom, mot de passe)
+//   montre la même image, sans trou, et le bureau retrouve son fond au déverrouillage.
 // Le fond d'origine de chaque écran est mémorisé et remis quand les deux options sont coupées.
 final class DesktopWallpaper {
     private let store: WallpaperStore
@@ -32,7 +33,7 @@ final class DesktopWallpaper {
             .combineLatest(prefs.$desktopToo, prefs.$desktopAnimated, prefs.$lockFullScreen)
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.apply() }.store(in: &bag)
-        lock.$locked.removeDuplicates().receive(on: RunLoop.main).sink { [weak self] _ in self?.updatePlayback() }.store(in: &bag)
+        lock.$locked.removeDuplicates().receive(on: RunLoop.main).sink { [weak self] _ in self?.apply(); self?.updatePlayback() }.store(in: &bag)
 
         let ws = NSWorkspace.shared.notificationCenter
         ws.addObserver(forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: .main) { [weak self] _ in self?.asleep = true; self?.updatePlayback() }
@@ -46,7 +47,7 @@ final class DesktopWallpaper {
     private var animatedKind: Bool { store.current.map { $0.kind == .video || $0.kind == .youtube } ?? false }
 
     func apply() {
-        guard prefs.desktopToo || prefs.lockFullScreen, let w = store.current else {
+        guard prefs.desktopToo || (prefs.lockFullScreen && lock.locked), let w = store.current else {
             removeWindows()
             restoreOriginals()
             applied = nil
@@ -149,12 +150,37 @@ final class DesktopWallpaper {
         }
         // Si l'utilisateur a choisi un autre fond entre-temps, on n'y touche pas.
         guard Self.oursOnScreen() else { return }
-        if fm.fileExists(atPath: Self.backup.path), restoreAppleStore() { return }
-        for s in NSScreen.screens {
-            guard let p = saved?[String(s.displayID)] else { continue }
-            do { try NSWorkspace.shared.setDesktopImageURL(URL(fileURLWithPath: p), for: s, options: [:]) }
-            catch { log.error("fond d'origine : \(error.localizedDescription, privacy: .public)") }
+        let hasBackup = fm.fileExists(atPath: Self.backup.path)
+        let urls = NSScreen.screens.map { s in saved?[String(s.displayID)].flatMap(Self.existing) }
+        // Simples images : remise douce par macOS (fondu), sans relancer WallpaperAgent.
+        // Sinon (fond animé, dynamique…) : la configuration copiée, remise telle quelle.
+        let plain = NSScreen.screens.allSatisfy { s in saved?[String(s.displayID)].map { Self.plainImage(URL(fileURLWithPath: $0)) } ?? false }
+        if plain, !urls.contains(where: { $0 == nil }) {
+            for (s, u) in zip(NSScreen.screens, urls) {
+                guard let u else { continue }
+                do { try NSWorkspace.shared.setDesktopImageURL(u, for: s, options: [:]) }
+                catch { log.error("fond d'origine : \(error.localizedDescription, privacy: .public)") }
+            }
+        } else if hasBackup {
+            _ = restoreAppleStore()
         }
+    }
+
+    /// Le fichier d'un fond d'origine. Safari retient « …Safari.avif » alors que le fichier est
+    /// en « .jpg » : on essaie les autres extensions d'image du même nom.
+    private static func existing(_ path: String) -> URL? {
+        if FileManager.default.fileExists(atPath: path) { return URL(fileURLWithPath: path) }
+        let base = URL(fileURLWithPath: path).deletingPathExtension()
+        return ["jpg", "jpeg", "heic", "png", "avif", "webp", "tiff"].map { base.appendingPathExtension($0) }
+            .first { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    /// Une simple image choisie par l'utilisateur ? Les fonds de macOS (dynamiques, animés, aux
+    /// vignettes rangées dans le système ou les caches) passent par la configuration copiée.
+    private static func plainImage(_ u: URL) -> Bool {
+        let p = u.path
+        return ["jpg", "jpeg", "png", "heic", "avif", "webp", "tiff"].contains(u.pathExtension.lowercased())
+            && !p.hasPrefix("/System/") && !p.contains("/com.apple.wallpaper/") && !p.contains("/Caches/")
     }
 
     /// Remet la configuration copiée et relance WallpaperAgent (le service de macOS qui affiche
