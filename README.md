@@ -53,7 +53,9 @@ Menu OsaWallpaper → **Choisir un fond d’écran…** (⌘F) ouvre une galerie
 
 **Aussi sur le bureau** (dans la galerie, le menu ou les réglages) : le même fond devient celui de ton Mac déverrouillé. Pour une vidéo, tu choisis **Animé** (elle tourne en boucle derrière tes fenêtres, en pause dès que le Mac est verrouillé, en veille ou en économie d’énergie) ou **Image fixe** (une image tirée de la vidéo, zéro CPU). Ton fond d’origine est remis quand tu coupes l’option.
 
-**Fondu ou plein écran** : par défaut ton fond se fond vers le bas pour laisser voir ta photo de session et le champ du mot de passe. En **plein écran**, il couvre tout l’écran et devient aussi ton fond macOS : ta photo de session, ton nom et le champ du mot de passe s’affichent par-dessus, sans trou (pour une vidéo, la zone autour du champ montre une image fixe de la vidéo). Ton ancien fond revient quand tu repasses en fondu.
+**Fondu ou plein écran** : par défaut ton fond se fond vers le bas pour laisser voir ta photo de session et le champ du mot de passe. En **plein écran**, il couvre tout l’écran ; ta photo de session, ton nom et le champ du mot de passe restent visibles par-dessus, sans trou (pour ça, pendant que le Mac est verrouillé seulement, la même image est posée en fond macOS ; ton bureau retrouve son fond au déverrouillage). Pour une vidéo, la zone autour du champ montre une image fixe de la vidéo.
+
+**Dans le Dock seulement quand tu t’en sers** : l’icône apparaît quand la galerie ou les réglages sont ouverts. Quand tu les fermes (ou ⌘Q), elle disparaît et une pastille « App mise en arrière-plan » le dit : l’app continue de tourner pour l’écran verrouillé. Pour la quitter vraiment : ⌥⌘Q ou le menu de la barre des menus.
 
 Sans musique, l’écran verrouillé montre ton fond avec l’heure et la météo. Quand un morceau joue, tu choisis ce qui s’affiche : la pochette de l’album ou ton fond, avec le lecteur par-dessus.
 

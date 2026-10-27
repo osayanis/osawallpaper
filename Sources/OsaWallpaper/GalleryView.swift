@@ -374,8 +374,8 @@ struct PreviewPane: View {
                 .pickerStyle(.segmented).labelsHidden()
                 if prefs.lockFullScreen {
                     Text(store.current?.kind == .image || store.current == nil
-                         ? "Ton fond devient aussi celui de macOS : ta photo, ton nom et le mot de passe s’affichent par-dessus, sans trou."
-                         : "Ton fond devient aussi celui de macOS (une image de la vidéo) : autour du mot de passe, la vidéo se fond dans cette image fixe.")
+                         ? "Ta photo de session, ton nom et le mot de passe restent visibles par-dessus. Ton bureau ne change pas."
+                         : "Ta photo de session, ton nom et le mot de passe restent visibles ; autour d’eux, la vidéo se fond dans une image fixe. Ton bureau ne change pas.")
                         .font(.system(size: 10.5)).foregroundStyle(.white.opacity(0.4)).fixedSize(horizontal: false, vertical: true)
                 }
                 Text("Quand de la musique joue").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.7)).padding(.top, 4)
@@ -442,10 +442,7 @@ struct DesktopOptions: View {
                         .frame(width: 30, height: 30).background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Aussi sur le bureau").font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(0.9))
-                        Text(kind == nil ? "Choisis d’abord un fond"
-                             : prefs.lockFullScreen && !prefs.desktopToo
-                                ? (kind == .image ? "Déjà sur le bureau (mode plein écran)" : "Déjà en image fixe (mode plein écran) ; active pour l’animer")
-                             : "Le même fond quand ton Mac est déverrouillé")
+                        Text(kind == nil ? "Choisis d’abord un fond" : "Le même fond quand ton Mac est déverrouillé")
                             .font(.system(size: 11)).foregroundStyle(.white.opacity(0.45))
                     }
                 }

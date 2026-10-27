@@ -16,12 +16,14 @@ enum Toast: Equatable, Identifiable {
     case charging(Int)
     case volume(Float, muted: Bool, symbol: String)
     case brightness(Float)
+    case background                          // l'app passe en arrière-plan (fenêtres fermées)
     var id: String {
         switch self {
         case .headphones(let h, _): return "hp-\(h.name)"
         case .charging: return "charging"
         case .volume: return "volume"
         case .brightness: return "brightness"
+        case .background: return "background"
         }
     }
 }

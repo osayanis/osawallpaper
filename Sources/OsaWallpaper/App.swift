@@ -24,6 +24,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
             .contains(where: { $0 != me }) { NSApp.terminate(nil); return }
 
+        buildMainMenu()
+        // Fenêtre fermée : s'il n'en reste aucune, l'icône quitte le Dock (l'app continue en fond).
+        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { [weak self] n in
+            guard let self, let w = n.object as? NSWindow, [self.settings, self.gallery, self.onboarding].contains(where: { $0 === w }) else { return }
+            DispatchQueue.main.async { self.windowsChanged() }
+        }
+
         music.start()
         devices.start()
         screens = ScreenManager(music: music, devices: devices, prefs: prefs)
@@ -45,6 +52,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 19) { self.devices.show(.brightness(0.72), for: 3) }
             if ProcessInfo.processInfo.environment["OSAWALLPAPER_ONBOARDING"] != nil { openOnboarding() }
             if ProcessInfo.processInfo.environment["OSAWALLPAPER_GALLERY"] != nil { openGallery() }
+            // OSAWALLPAPER_BG_TEST : icône dans le Dock, puis passage en arrière-plan (pastille).
+            if ProcessInfo.processInfo.environment["OSAWALLPAPER_BG_TEST"] != nil {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) { self.showInDock(); NSLog("OsaWallpaper test: policy=\(NSApp.activationPolicy().rawValue)") }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 6) { self.toBackground(); NSLog("OsaWallpaper test: policy=\(NSApp.activationPolicy().rawValue)") }
+            }
             if ProcessInfo.processInfo.environment["OSAWALLPAPER_OVER_MUSIC"] != nil { prefs.wallpaperOverMusic = true }
             // OSAWALLPAPER_APPLY=<fichier ou lien> : utilise ce fond tout de suite.
             if let a = ProcessInfo.processInfo.environment["OSAWALLPAPER_APPLY"] {
@@ -107,6 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             w.center()
             settings = w
         }
+        showInDock()
         NSApp.activate(ignoringOtherApps: true)
         settings?.makeKeyAndOrderFront(nil)
     }
@@ -128,6 +141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             gallery = w
         }
         if Demo.on { gallery?.orderFrontRegardless(); return }   // tests : ne vole pas le focus
+        showInDock()
         NSApp.activate(ignoringOtherApps: true)
         gallery?.makeKeyAndOrderFront(nil)
     }
@@ -149,8 +163,73 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             onboarding = w
         }
         if Demo.on { onboarding?.orderBack(nil); return }   // tests : ne vole pas le focus
+        showInDock()
         NSApp.activate(ignoringOtherApps: true)
         onboarding?.makeKeyAndOrderFront(nil)
+    }
+
+    // MARK: Dock et arrière-plan
+    // Une fenêtre ouverte (galerie, réglages, bienvenue) : l'icône est dans le Dock. Toutes fermées
+    // (ou ⌘Q, ou « Quitter » dans le Dock) : l'icône disparaît, l'app continue en arrière-plan
+    // (écran verrouillé, pastilles, bureau) et une pastille le dit. Quitter pour de bon : ⌥⌘Q
+    // ou le menu de la barre des menus.
+
+    private func showInDock() {
+        if NSApp.activationPolicy() != .regular { NSApp.setActivationPolicy(.regular) }
+    }
+
+    private func windowsChanged() {
+        let open = [settings, gallery, onboarding].contains { $0?.isVisible == true || $0?.isMiniaturized == true }
+        guard !open, NSApp.activationPolicy() == .regular else { return }
+        NSApp.setActivationPolicy(.accessory)
+        devices.show(.background, for: 3.5)
+    }
+
+    @objc func toBackground() {
+        [settings, gallery, onboarding].forEach { $0?.close() }
+        windowsChanged()
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // « Quitter » dans le Dock : un Apple Event sans raison (une déconnexion ou un arrêt en ont une).
+        let ae = NSAppleEventManager.shared().currentAppleEvent
+        let fromDock = ae?.eventID == kAEQuitApplication && ae?.attributeDescriptor(forKeyword: kAEQuitReason) == nil
+        if fromDock, NSApp.activationPolicy() == .regular { toBackground(); return .terminateCancel }
+        return .terminateNow
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        if !hasVisibleWindows { openGallery() }
+        return true
+    }
+
+    private func buildMainMenu() {
+        let main = NSMenu()
+        func sub(_ title: String, _ items: [NSMenuItem]) {
+            let m = NSMenu(title: title); items.forEach(m.addItem)
+            let i = NSMenuItem(); i.submenu = m; main.addItem(i)
+        }
+        func item(_ t: String, _ a: Selector, _ k: String, _ mods: NSEvent.ModifierFlags = .command, target: AnyObject? = nil) -> NSMenuItem {
+            let i = NSMenuItem(title: t, action: a, keyEquivalent: k); i.keyEquivalentModifierMask = mods; i.target = target; return i
+        }
+        sub("OsaWallpaper", [
+            item("Choisir un fond d’écran…", #selector(openGallery), "f", target: self),
+            item("Réglages…", #selector(openSettings), ",", target: self),
+            .separator(),
+            item("Mettre en arrière-plan", #selector(toBackground), "q", target: self),
+            item("Quitter complètement", #selector(NSApplication.terminate(_:)), "q", [.command, .option]),
+        ])
+        // Édition : copier-coller dans la recherche et le champ du lien.
+        sub("Édition", [
+            item("Annuler", Selector(("undo:")), "z"), item("Rétablir", Selector(("redo:")), "z", [.command, .shift]), .separator(),
+            item("Couper", #selector(NSText.cut(_:)), "x"), item("Copier", #selector(NSText.copy(_:)), "c"),
+            item("Coller", #selector(NSText.paste(_:)), "v"), item("Tout sélectionner", #selector(NSText.selectAll(_:)), "a"),
+        ])
+        sub("Fenêtre", [
+            item("Fermer", #selector(NSWindow.performClose(_:)), "w"),
+            item("Réduire", #selector(NSWindow.performMiniaturize(_:)), "m"),
+        ])
+        NSApp.mainMenu = main
     }
 
     @objc func preview() { screens.showPreview() }

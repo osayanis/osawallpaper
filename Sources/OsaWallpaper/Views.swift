@@ -572,12 +572,36 @@ struct ToastView: View {
                     .foregroundStyle(.yellow).frame(width: 22)
                     .contentTransition(.symbolEffect(.replace))
                 Level(value: b)
+            case .background:
+                MascotNap()
+                Text("App mise en arrière-plan").font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
+                Spacer(minLength: 0)
             }
         }
         .padding(.leading, 14).padding(.trailing, 10)
         .frame(width: 236, height: 40)
         .background(Capsule().fill(.black))
         .shadow(color: .black.opacity(0.3), radius: 12, y: 5)
+    }
+}
+
+/// La mascotte (l'icône de l'app) part faire la sieste : elle se balance et des « z » s'envolent.
+struct MascotNap: View {
+    @State private var on = false
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 24, height: 24)
+                .rotationEffect(.degrees(on ? -9 : 9), anchor: .bottom)
+                .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: on)
+            ForEach(0..<2, id: \.self) { i in
+                Text("z").font(.system(size: 8 + CGFloat(i) * 2, weight: .heavy, design: .rounded))
+                    .offset(x: on ? 9 + CGFloat(i) * 4 : 2, y: on ? -9 - CGFloat(i) * 6 : 2)
+                    .opacity(on ? 0 : 0.95)
+                    .animation(.easeOut(duration: 1.3).repeatForever(autoreverses: false).delay(Double(i) * 0.65), value: on)
+            }
+        }
+        .frame(width: 22, height: 24)
+        .onAppear { on = true }
     }
 }
 
