@@ -81,7 +81,7 @@ Sans musique, l’écran verrouillé montre ton fond avec l’heure et la mété
 | 🔊 **Volume** | Une pastille discrète avec le niveau, l’icône de ton casque s’il est connecté. |
 | ☀️ **Luminosité** | Une pastille quand tu appuies sur F1 / F2. |
 | 🙈 **Adieu les indicateurs de macOS** | Avec l’autorisation Accessibilité (facultative), OsaWallpaper gère lui-même les touches son et luminosité : seules ses pastilles s’affichent. |
-| 🌤️ **Météo** | La température et le ciel dans la barre de menus (Open-Meteo, sans clé ni compte). |
+| 🌤️ **Météo** | La température et le ciel sur l’écran verrouillé et dans le menu de la mascotte (Open-Meteo, sans clé ni compte). |
 
 ## 👋 Premier lancement
 
@@ -103,7 +103,7 @@ Pas de caméra, pas de micro, pas de localisation : la météo utilise une posit
 2. Ouvre-la. L’app n’est pas notarisée : la première fois, fais **clic droit → Ouvrir**.
 3. Suis la fenêtre de bienvenue, lance un morceau, puis verrouille ton Mac avec <kbd>⌃</kbd> <kbd>⌘</kbd> <kbd>Q</kbd>.
 
-L’icône dans la barre de menus donne accès aux réglages, à l’aperçu et à l’ouverture au démarrage.
+Dans la barre des menus, la mascotte tourne doucement sur elle-même (animée par Core Animation : l’app ne fait rien à chaque image). Son menu donne la météo, le morceau en cours, l’accès à l’app, à l’aperçu et aux réglages.
 
 ### 🔄 Mises à jour
 
