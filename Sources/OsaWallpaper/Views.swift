@@ -58,11 +58,9 @@ struct LockView: View {
         let h = size.height
         let playing = music.music != nil
         let show = (lock.visible || Demo.on) && prefs.lockScreen && (playing || wall.current != nil)
-        // Pochette animée de l'artiste (Apple Music) : elle devient tout le fond, comme sur l'iPhone.
-        let motion = playing && prefs.motionArt && music.motion != nil && music.motionPlayer.player != nil
-        let musicFull = motion || (playing && prefs.artBackground && music.backdrop != nil)
-        // Ton fond à toi : sans musique, ou toujours si tu l'as choisi.
-        let custom = wall.current != nil && (!playing || prefs.wallpaperOverMusic || !musicFull)
+        let motion = Self.motion(music: music, prefs: prefs)
+        let musicFull = Self.musicFull(music: music, prefs: prefs)
+        let custom = Self.showsWallpaper(music: music, prefs: prefs, wall: wall)
         let moving = motion && !custom
         let full = custom || musicFull
         let art = min(h * 0.33, size.width * 0.3, 400)
@@ -113,6 +111,21 @@ struct LockView: View {
         .onChange(of: show && moving) { _, v in music.motionPlayer.setVisible(v) }
         .onChange(of: video) { _, v in wall.player.setVisible(v) }
         .onChange(of: wall.current?.id) { wall.player.setVisible(video) }
+    }
+}
+
+extension LockView {
+    /// Pochette animée de l'artiste (Apple Music) : elle devient tout le fond, comme sur l'iPhone.
+    static func motion(music: MusicWatcher, prefs: Prefs) -> Bool {
+        music.music != nil && prefs.motionArt && music.motion != nil && music.motionPlayer.player != nil
+    }
+    /// La pochette (animée ou floutée) occupe tout l'écran.
+    static func musicFull(music: MusicWatcher, prefs: Prefs) -> Bool {
+        motion(music: music, prefs: prefs) || (music.music != nil && prefs.artBackground && music.backdrop != nil)
+    }
+    /// Ton fond à toi : sans musique, ou toujours si tu l'as choisi.
+    static func showsWallpaper(music: MusicWatcher, prefs: Prefs, wall: WallpaperStore) -> Bool {
+        wall.current != nil && (music.music == nil || prefs.wallpaperOverMusic || !musicFull(music: music, prefs: prefs))
     }
 }
 

@@ -19,6 +19,7 @@ final class DesktopWallpaper {
     private let store: WallpaperStore
     private let prefs: Prefs
     private let lock: LockState
+    private let music: MusicWatcher
     private let player = MotionPlayer()                 // le sien : l'écran verrouillé a le sien
     private var windows: [NSWindow] = []
     private var filled = Set<Int>()                     // fenêtres qui affichent déjà la vidéo (windowNumber)
@@ -31,14 +32,23 @@ final class DesktopWallpaper {
     private var lockOriginals: [CGDirectDisplayID: URL] = [:]
     private var lockSwap = 0                             // numéro du verrouillage en cours (ignore les tâches d'un ancien)
     private var covers: [NSWindow] = []                  // le fond d'origine, peint au niveau du bureau pendant un verrouillage
+    private var isLocked = false                         // lock.locked change après ses abonnés (willSet)
+    private var swapped = false                          // verrouillé : notre image est en ce moment le fond de macOS
 
-    init(store: WallpaperStore, prefs: Prefs, lock: LockState) {
-        self.store = store; self.prefs = prefs; self.lock = lock
+    init(store: WallpaperStore, prefs: Prefs, lock: LockState, music: MusicWatcher) {
+        self.store = store; self.prefs = prefs; self.lock = lock; self.music = music
         store.$current.map { $0?.id }.removeDuplicates()
             .combineLatest(prefs.$desktopToo, prefs.$desktopAnimated, prefs.$lockFullScreen)
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.apply() }.store(in: &bag)
         lock.$locked.removeDuplicates().receive(on: RunLoop.main).sink { [weak self] l in self?.lockChanged(l); self?.updatePlayback() }.store(in: &bag)
+        // Musique lancée ou arrêtée pendant le verrouillage : la pochette remplace ton fond (ou l'inverse).
+        // Laissé reposer un instant : entre deux morceaux la pochette disparaît brièvement.
+        music.$music.map { $0 != nil }.removeDuplicates()
+            .combineLatest(music.$backdrop.map { $0 != nil }.removeDuplicates(), music.$motion.map { $0 != nil }.removeDuplicates())
+            .combineLatest(prefs.$wallpaperOverMusic, prefs.$artBackground, prefs.$motionArt)
+            .debounce(for: .seconds(1.5), scheduler: RunLoop.main)
+            .sink { [weak self] _ in self?.syncLockSwap() }.store(in: &bag)
         if Demo.on { LockHole.shared.open = true }
         restoreAfterLock()                               // l'app s'était arrêtée pendant un verrouillage
 
@@ -80,9 +90,10 @@ final class DesktopWallpaper {
 
     func lockChanged(_ locked: Bool) {
         lockSwap += 1
-        let n = lockSwap
+        isLocked = locked
         if locked && prefs.lockFullScreen && !Demo.on { LoginUI.shared.start() } else if !Demo.on { LoginUI.shared.stop() }
         guard locked else {
+            swapped = false
             LockHole.shared.open = Demo.on
             restoreAfterLock()
             // macOS remet son fond sous le cache, en fondu, mais il est lent juste après un
@@ -97,25 +108,51 @@ final class DesktopWallpaper {
             }
             return
         }
-        guard prefs.lockFullScreen, !prefs.desktopToo, !Demo.on, let w = store.current else {
-            LockHole.shared.open = true                  // bureau déjà sur notre fond, ou rien à faire
+        syncLockSwap()
+    }
+
+    /// Plein écran, Mac verrouillé : notre image devient le fond de macOS seulement pendant que
+    /// l'écran verrouillé montre ton fond. Quand la pochette prend l'écran (musique), ton fond
+    /// d'origine revient sous son fondu ; notre image revient quand la musique s'arrête.
+    private func syncLockSwap() {
+        guard isLocked, !Demo.on else { return }
+        let want = prefs.lockFullScreen && !prefs.desktopToo && LockView.showsWallpaper(music: music, prefs: prefs, wall: store)
+        guard want, let w = store.current else {
+            if swapped {
+                lockSwap += 1                            // annule une pose de notre image en cours
+                swapped = false
+                for s in NSScreen.screens {
+                    guard let u = lockOriginals[s.displayID] ?? lockOriginals.values.first else { continue }
+                    try? NSWorkspace.shared.setDesktopImageURL(u, for: s, options: [:])
+                }
+                log.notice("verrouillage : pochette affichée, fond d'origine remis sous le fondu")
+            } else if prefs.lockFullScreen, store.current != nil, !prefs.desktopToo {
+                log.notice("verrouillage : pochette affichée, fond macOS gardé")
+            }
+            LockHole.shared.open = true                  // bureau déjà sur notre fond, pochette affichée, ou rien à faire
             return
         }
+        guard !swapped else { return }
         // Seulement si on sait remettre exactement le fond affiché (une image) au déverrouillage.
-        var originals: [CGDirectDisplayID: URL] = [:]
-        for s in NSScreen.screens {
-            guard let u = NSWorkspace.shared.desktopImageURL(for: s), Self.plainImage(u),
-                  !u.path.hasPrefix(WallpaperStore.dir.path), let file = Self.existing(u.path) else {
-                log.notice("verrouillage : fond actuel non remplaçable (\(NSWorkspace.shared.desktopImageURL(for: s)?.path ?? "aucun", privacy: .public))")
-                LockHole.shared.open = true
-                return
+        var originals = lockOriginals
+        if originals.isEmpty {
+            for s in NSScreen.screens {
+                guard let u = NSWorkspace.shared.desktopImageURL(for: s), Self.plainImage(u),
+                      !u.path.hasPrefix(WallpaperStore.dir.path), let file = Self.existing(u.path) else {
+                    log.notice("verrouillage : fond actuel non remplaçable (\(NSWorkspace.shared.desktopImageURL(for: s)?.path ?? "aucun", privacy: .public))")
+                    LockHole.shared.open = true
+                    return
+                }
+                originals[s.displayID] = file
             }
-            originals[s.displayID] = file
+            lockOriginals = originals
+            showCovers(originals)
+            UserDefaults.standard.set(Dictionary(uniqueKeysWithValues: originals.map { (String($0.key), $0.value.path) }), forKey: Self.lockKey)
         }
         LockHole.shared.open = false
-        lockOriginals = originals
-        showCovers(originals)
-        UserDefaults.standard.set(Dictionary(uniqueKeysWithValues: originals.map { (String($0.key), $0.value.path) }), forKey: Self.lockKey)
+        swapped = true
+        lockSwap += 1
+        let n = lockSwap
         Task { @MainActor [weak self] in
             guard let still = await Self.stillImage(for: w), let self, self.lockSwap == n else { return }
             for s in NSScreen.screens {

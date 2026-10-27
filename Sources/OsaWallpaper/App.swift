@@ -35,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         devices.start()
         screens = ScreenManager(music: music, devices: devices, prefs: prefs)
         screens.rebuild()
-        desktop = DesktopWallpaper(store: WallpaperStore.shared, prefs: prefs, lock: screens.lock)
+        desktop = DesktopWallpaper(store: WallpaperStore.shared, prefs: prefs, lock: screens.lock, music: music)
         awake = ScreenAwake(lock: screens.lock, prefs: prefs)
         if let s = ProcessInfo.processInfo.environment["OSAWALLPAPER_AWAKE_TEST"], let t = Double(s) { awake.test(seconds: t) }
         buildStatusItem()
