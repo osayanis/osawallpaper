@@ -10,7 +10,9 @@ import os
 // - Vidéo « animée » : une fenêtre au niveau du bureau (sous les icônes, derrière toutes les
 //   fenêtres) lit la vidéo en boucle, en pause dès que le Mac est verrouillé, en veille ou en
 //   mode économie d'énergie.
-// Le fond d'origine de chaque écran est mémorisé et remis quand l'option est coupée.
+// - « Plein écran » sur l'écran verrouillé pose aussi l'image fixe : la zone laissée ouverte sur la
+//   connexion de macOS (photo, nom, mot de passe) montre alors la même image, sans trou visible.
+// Le fond d'origine de chaque écran est mémorisé et remis quand les deux options sont coupées.
 final class DesktopWallpaper {
     private let store: WallpaperStore
     private let prefs: Prefs
@@ -27,7 +29,7 @@ final class DesktopWallpaper {
     init(store: WallpaperStore, prefs: Prefs, lock: LockState) {
         self.store = store; self.prefs = prefs; self.lock = lock
         store.$current.map { $0?.id }.removeDuplicates()
-            .combineLatest(prefs.$desktopToo, prefs.$desktopAnimated)
+            .combineLatest(prefs.$desktopToo, prefs.$desktopAnimated, prefs.$lockFullScreen)
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.apply() }.store(in: &bag)
         lock.$locked.removeDuplicates().receive(on: RunLoop.main).sink { [weak self] _ in self?.updatePlayback() }.store(in: &bag)
@@ -44,13 +46,13 @@ final class DesktopWallpaper {
     private var animatedKind: Bool { store.current.map { $0.kind == .video || $0.kind == .youtube } ?? false }
 
     func apply() {
-        guard prefs.desktopToo, let w = store.current else {
+        guard prefs.desktopToo || prefs.lockFullScreen, let w = store.current else {
             removeWindows()
             restoreOriginals()
             applied = nil
             return
         }
-        let animate = prefs.desktopAnimated && animatedKind
+        let animate = prefs.desktopToo && prefs.desktopAnimated && animatedKind
         let key = "\(w.id)|\(animate)"
         guard key != applied else { return }
         applied = key
