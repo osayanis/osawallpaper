@@ -17,6 +17,7 @@ final class Prefs: ObservableObject {
     @Published var hideSystemHUD: Bool { didSet { d.set(hideSystemHUD, forKey: "hideSystemHUD") } }  // remplace les indicateurs de macOS
     @Published var wallpaperOverMusic: Bool { didSet { d.set(wallpaperOverMusic, forKey: "wallpaperOverMusic") } }  // garde mon fond même pendant la musique
     @Published var lockFullScreen: Bool { didSet { d.set(lockFullScreen, forKey: "lockFullScreen") } }  // fond plein écran (sinon fondu en bas)
+    @Published var lockAwakeMinutes: Int { didSet { d.set(lockAwakeMinutes, forKey: "lockAwakeMinutes") } }  // écran allumé une fois verrouillé (0 = comme macOS)
     @Published var desktopToo: Bool { didSet { d.set(desktopToo, forKey: "desktopToo") } }            // le même fond sur le bureau
     @Published var desktopAnimated: Bool { didSet { d.set(desktopAnimated, forKey: "desktopAnimated") } }  // vidéo animée sur le bureau
     @Published var allScreens: Bool { didSet { d.set(allScreens, forKey: "allScreens") } }
@@ -28,7 +29,7 @@ final class Prefs: ObservableObject {
     private init() {
         d.register(defaults: [
             "artBackground": true, "showWeather": true, "showLyrics": true,
-            "showAirpods": true, "showCharging": true, "showVolume": true, "showBrightness": true, "autoUpdate": true, "motionArt": true, "hideSystemHUD": true, "wallpaperOverMusic": false, "lockFullScreen": false, "desktopToo": false, "desktopAnimated": true, "allScreens": true, "lockScreen": true, "weatherInMenuBar": true, "onboarded": false,
+            "showAirpods": true, "showCharging": true, "showVolume": true, "showBrightness": true, "autoUpdate": true, "motionArt": true, "hideSystemHUD": true, "wallpaperOverMusic": false, "lockFullScreen": false, "lockAwakeMinutes": 5, "desktopToo": false, "desktopAnimated": true, "allScreens": true, "lockScreen": true, "weatherInMenuBar": true, "onboarded": false,
         ])
         artBackground = d.bool(forKey: "artBackground")
         showWeather = d.bool(forKey: "showWeather")
@@ -42,6 +43,7 @@ final class Prefs: ObservableObject {
         hideSystemHUD = d.bool(forKey: "hideSystemHUD")
         wallpaperOverMusic = d.bool(forKey: "wallpaperOverMusic")
         lockFullScreen = d.bool(forKey: "lockFullScreen")
+        lockAwakeMinutes = d.integer(forKey: "lockAwakeMinutes")
         desktopToo = d.bool(forKey: "desktopToo")
         desktopAnimated = d.bool(forKey: "desktopAnimated")
         allScreens = d.bool(forKey: "allScreens")

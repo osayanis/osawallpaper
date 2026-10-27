@@ -57,6 +57,8 @@ Menu OsaWallpaper → **Ouvrir OsaWallpaper…** ouvre une galerie avec un aper�
 
 **Réglages** : un onglet de la fenêtre, à droite de « Mes fonds » (menu → Réglages…, ⌘,).
 
+**L’écran reste allumé** : macOS éteint très vite l’écran d’un Mac verrouillé. OsaWallpaper le garde allumé 5 minutes après ta dernière action (réglable : comme macOS, 1, 2, 5, 10 ou 30 minutes), puis laisse macOS l’éteindre. Jamais en mode économie d’énergie.
+
 **Dans le Dock seulement quand tu t’en sers** : l’icône apparaît quand la fenêtre est ouverte. Quand tu les fermes (ou ⌘Q), elle disparaît et une pastille « App mise en arrière-plan » le dit : l’app continue de tourner pour l’écran verrouillé. Pour la quitter vraiment : ⌥⌘Q ou le menu de la barre des menus.
 
 Sans musique, l’écran verrouillé montre ton fond avec l’heure et la météo. Quand un morceau joue, tu choisis ce qui s’affiche : la pochette de l’album ou ton fond, avec le lecteur par-dessus.
@@ -74,7 +76,7 @@ Sans musique, l’écran verrouillé montre ton fond avec l’heure et la mété
 
 | | |
 |---|---|
-| 🎧 **AirPods et casques** | Dès qu’un casque Bluetooth se connecte, une pastille apparaît en haut de l’écran avec sa batterie et le volume, au-dessus de toutes tes apps, même en plein écran. |
+| 🎧 **AirPods et casques** | Dès qu’un casque Bluetooth se connecte, une pastille apparaît en haut de l’écran avec sa batterie et le volume, au-dessus de toutes tes apps, même en plein écran. L’icône est celle de ton modèle exact : AirPods, AirPods 3 ou 4, AirPods Pro, AirPods Max ou Beats. |
 | ⚡ **Charge** | Branche ton Mac : une pastille « En charge » s’affiche avec le pourcentage. |
 | 🔊 **Volume** | Une pastille discrète avec le niveau, l’icône de ton casque s’il est connecté. |
 | ☀️ **Luminosité** | Une pastille quand tu appuies sur F1 / F2. |
@@ -129,12 +131,13 @@ OSAWALLPAPER_DEMO=/chemin/vers/une/image.jpg ./OsaWallpaper.app/Contents/MacOS/O
 | Fonction | Technique |
 |---|---|
 | Afficher sur l’écran verrouillé | Les fenêtres sont placées dans un espace [SkyLight](https://github.com/Lakr233/SkyLightWindow) plus haut que l’écran de verrouillage (API privée, même technique qu’[OsaNotch](https://github.com/osayanis/osanotch-native)). Elles ne deviennent jamais « clé » : ton mot de passe va toujours à macOS. |
+| Écran allumé | Assertion IOKit `PreventUserIdleDisplaySleep`, prise seulement pendant que le Mac est verrouillé et relâchée après le délai choisi sans activité. |
 | Verrouillé ou non | Notifications `com.apple.screenIsLocked` / `screenIsUnlocked`. |
 | Clics | Les fenêtres laissent passer la souris partout, sauf sur les boutons. |
 | Musique | `osascript` en sous-processus, une seule requête à la fois, Music ou Spotify. La progression est calculée localement. |
 | Pochette | Celle du fichier dans Music, sinon recherche iTunes. Le flou est calculé une seule fois par morceau avec Core Image. |
 | Paroles | [LRCLIB](https://lrclib.net). L’app ne se réveille qu’au début de chaque ligne. |
-| AirPods | Sortie audio par défaut surveillée via CoreAudio, sans permission Bluetooth. Batterie lue dans `system_profiler`. |
+| AirPods | Sortie audio par défaut surveillée via CoreAudio, sans permission Bluetooth. Batterie et modèle (Product ID, même si tu as renommé tes AirPods) lus dans `system_profiler`. |
 | Charge | Notifications IOKit (`IOPSNotificationCreateRunLoopSource`) + `notify`. |
 | Volume | Écouteur CoreAudio sur le volume et la sourdine de la sortie par défaut. |
 | Luminosité | `DisplayServicesGetBrightness` (framework privé) lu 5 fois par seconde, pastille seulement après F1 / F2. |
