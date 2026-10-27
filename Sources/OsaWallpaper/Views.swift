@@ -71,9 +71,9 @@ struct LockView: View {
                 if custom {
                     CustomBackdrop(store: wall, size: size, fullScreen: prefs.lockFullScreen).id(wall.current?.id).transition(.opacity)
                 } else if moving, let p = music.motionPlayer.player {
-                    MotionBackdrop(player: p, size: size, fullScreen: prefs.lockFullScreen).transition(.opacity)
+                    MotionBackdrop(player: p, size: size).transition(.opacity)
                 } else if full, let b = music.backdrop {
-                    LockBackdrop(image: b, palette: music.palette, size: size, fullScreen: prefs.lockFullScreen)
+                    LockBackdrop(image: b, palette: music.palette, size: size)
                         .id(ObjectIdentifier(b)).transition(.opacity)
                 }
                 VStack(spacing: 0) {
@@ -175,6 +175,7 @@ extension View {
 
 /// Masque plein écran : tout est opaque sauf une ellipse floue en bas au centre, là où macOS
 /// affiche ta photo, ton nom et le champ du mot de passe (nos fenêtres passent au-dessus).
+/// Le même fond est posé sur macOS (Desktop.swift) : l'ellipse montre la même image, sans trou.
 struct LoginHole: View {
     let size: CGSize
     var body: some View {
