@@ -231,13 +231,11 @@ final class DesktopWallpaper {
         }
     }
 
-    /// Le fichier d'un fond d'origine. Safari retient « …Safari.avif » alors que le fichier est
-    /// en « .jpg » : on essaie les autres extensions d'image du même nom.
+    /// Le fichier d'un fond d'origine, s'il existe encore. macOS peut afficher un fond dont le fichier
+    /// a disparu (il en garde une copie en cache) : jamais de fichier « qui y ressemble » à la place
+    /// (un même nom en .jpg peut être une tout autre image). Dans ce cas, la configuration copiée.
     private static func existing(_ path: String) -> URL? {
-        if FileManager.default.fileExists(atPath: path) { return URL(fileURLWithPath: path) }
-        let base = URL(fileURLWithPath: path).deletingPathExtension()
-        return ["jpg", "jpeg", "heic", "png", "avif", "webp", "tiff"].map { base.appendingPathExtension($0) }
-            .first { FileManager.default.fileExists(atPath: $0.path) }
+        FileManager.default.fileExists(atPath: path) ? URL(fileURLWithPath: path) : nil
     }
 
     /// Une simple image choisie par l'utilisateur ? Les fonds de macOS (dynamiques, animés, aux
