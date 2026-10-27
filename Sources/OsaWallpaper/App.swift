@@ -11,7 +11,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let devices = Devices()
     private var screens: ScreenManager!
     private var status: NSStatusItem!
-    private var settings: NSWindow?
     private var onboarding: NSWindow?
     private var gallery: NSWindow?
     private var desktop: DesktopWallpaper?
@@ -27,7 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         buildMainMenu()
         // Fenêtre fermée : s'il n'en reste aucune, l'icône quitte le Dock (l'app continue en fond).
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { [weak self] n in
-            guard let self, let w = n.object as? NSWindow, [self.settings, self.gallery, self.onboarding].contains(where: { $0 === w }) else { return }
+            guard let self, let w = n.object as? NSWindow, [self.gallery, self.onboarding].contains(where: { $0 === w }) else { return }
             DispatchQueue.main.async { self.windowsChanged() }
         }
 
@@ -37,7 +36,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         screens.rebuild()
         desktop = DesktopWallpaper(store: WallpaperStore.shared, prefs: prefs, lock: screens.lock)
         buildStatusItem()
-        if !Demo.on { Updater.shared.startAutomaticChecks() }
+        if !Demo.on {
+            Updater.shared.canRelaunch = { [weak self] in
+                guard let self else { return false }
+                return !self.screens.lock.locked && !self.screens.lock.preview
+                    && ![self.gallery, self.onboarding].contains { $0?.isVisible == true }
+            }
+            Updater.shared.startAutomaticChecks()
+            if let from = UserDefaults.standard.string(forKey: "updatedFrom") {
+                UserDefaults.standard.removeObject(forKey: "updatedFrom")
+                if from != Updater.current {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { self.devices.show(.updated(Updater.current), for: 4) }
+                }
+            }
+        }
         if ProcessInfo.processInfo.environment["OSAWALLPAPER_UPDATE_TEST"] != nil {
             // test de bout en bout : installe la dernière release sans demander
             Updater.shared.check { r in if let r { Updater.shared.install(r) } else { NSLog("OsaWallpaper update test: rien de plus récent") } }
@@ -58,6 +70,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 6) { self.toBackground(); NSLog("OsaWallpaper test: policy=\(NSApp.activationPolicy().rawValue)") }
             }
             if ProcessInfo.processInfo.environment["OSAWALLPAPER_OVER_MUSIC"] != nil { prefs.wallpaperOverMusic = true }
+            // OSAWALLPAPER_DEMO_LOGIN : connexion de macOS simulée (photo, nom, champ) pour le plein écran vidéo.
+            if ProcessInfo.processInfo.environment["OSAWALLPAPER_DEMO_LOGIN"] != nil, let s = NSScreen.main?.frame {
+                let primary = NSScreen.screens.first?.frame.height ?? s.height, top = primary - s.maxY, cx = s.midX
+                LoginUI.shared.demo(.init(avatar: CGRect(x: cx - 32, y: top + s.height - 214, width: 64, height: 64),
+                                          name: CGRect(x: cx - 60, y: top + s.height - 140, width: 120, height: 18),
+                                          field: CGRect(x: cx - 95, y: top + s.height - 108, width: 190, height: 30)))
+            }
             // OSAWALLPAPER_APPLY=<fichier ou lien> : utilise ce fond tout de suite.
             if let a = ProcessInfo.processInfo.environment["OSAWALLPAPER_APPLY"] {
                 if FileManager.default.fileExists(atPath: a) { WallpaperStore.shared.importFile(URL(fileURLWithPath: a)) }
@@ -112,24 +131,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // MARK: Fenêtres
-    @objc func openSettings() {
-        if settings == nil {
-            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: 680),
-                             styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
-            w.title = "Réglages d’OsaWallpaper"
-            w.titlebarAppearsTransparent = true
-            w.isReleasedWhenClosed = false
-            w.contentView = NSHostingView(rootView: SettingsView(prefs: prefs, devices: devices, music: music,
-                                                                 onPreview: { [weak self] in self?.preview() }))
-            w.center()
-            settings = w
-        }
-        showInDock()
-        NSApp.activate(ignoringOtherApps: true)
-        settings?.makeKeyAndOrderFront(nil)
-    }
+    /// Les réglages sont un onglet de la fenêtre principale (à droite de « Mes fonds »).
+    @objc func openSettings() { showGallery(tab: .settings) }
 
-    @objc func openGallery() {
+    @objc func openGallery() { showGallery(tab: nil) }
+
+    func showGallery(tab: GalleryTab?) {
+        if let tab {
+            GalleryModel.requestedTab = tab
+            NotificationCenter.default.post(name: .osaGalleryTab, object: tab)
+        }
         if gallery == nil {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1080, height: 700),
                              styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
@@ -141,7 +152,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             w.backgroundColor = NSColor(red: 0.04, green: 0.04, blue: 0.06, alpha: 1)
             w.contentMinSize = NSSize(width: 980, height: 640)
             w.contentView = NSHostingView(rootView: GalleryView(store: WallpaperStore.shared, prefs: prefs,
-                                                                onPreview: { [weak self] in self?.preview() }))
+                                                                onPreview: { [weak self] in self?.preview() },
+                                                                settings: AnyView(SettingsView(prefs: prefs, devices: devices, music: music,
+                                                                                               onPreview: { [weak self] in self?.preview() }, embedded: true))))
             w.center()
             gallery = w
         }
@@ -184,14 +197,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func windowsChanged() {
-        let open = [settings, gallery, onboarding].contains { $0?.isVisible == true || $0?.isMiniaturized == true }
+        let open = [gallery, onboarding].contains { $0?.isVisible == true || $0?.isMiniaturized == true }
         guard !open, NSApp.activationPolicy() == .regular else { return }
         NSApp.setActivationPolicy(.accessory)
         devices.show(.background, for: 3.5)
     }
 
     @objc func toBackground() {
-        [settings, gallery, onboarding].forEach { $0?.close() }
+        [gallery, onboarding].forEach { $0?.close() }
         windowsChanged()
     }
 
@@ -315,6 +328,7 @@ struct SettingsView: View {
     @ObservedObject var music: MusicWatcher
     @ObservedObject var wall = WallpaperStore.shared
     var onPreview: () -> Void
+    var embedded = false                         // dans l'onglet « Réglages » de la fenêtre principale
     @State private var city = Prefs.shared.city
     @State private var login = LoginItem.enabled
 
@@ -391,7 +405,7 @@ struct SettingsView: View {
                     Button("Tester : charge") { devices.show(.charging(devices.battery?.percent ?? 82), for: 4) }
                     Button("Tester : volume") { devices.show(.volume(devices.volume ?? 0.5, muted: false, symbol: "speaker.wave.2.fill"), for: 2) }
                 }
-                Toggle("Rechercher les mises à jour automatiquement", isOn: $prefs.autoUpdate)
+                Toggle("Installer les mises à jour automatiquement", isOn: $prefs.autoUpdate)
                 HStack {
                     Text("Version \(Updater.current)").foregroundStyle(.secondary)
                     Spacer()
@@ -402,7 +416,9 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 460, height: 680)
+        .scrollContentBackground(embedded ? .hidden : .automatic)
+        .frame(width: embedded ? nil : 460, height: embedded ? nil : 680)
+        .frame(maxWidth: embedded ? 640 : nil)
     }
 
     private func applyCity() {

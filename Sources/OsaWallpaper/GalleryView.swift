@@ -7,7 +7,7 @@ import CoreImage
 // un lien (YouTube, .mp4) ou un fichier du Mac. Aperçu à droite, sur une maquette de l'écran verrouillé.
 
 enum GalleryTab: String, CaseIterable, Identifiable {
-    case photos = "Photos", aerials = "Vidéos Apple", link = "Ton lien", mine = "Mes fonds"
+    case photos = "Photos", aerials = "Vidéos Apple", link = "Ton lien", mine = "Mes fonds", settings = "Réglages"
     var id: String { rawValue }
     var icon: String {
         switch self {
@@ -15,13 +15,18 @@ enum GalleryTab: String, CaseIterable, Identifiable {
         case .aerials: "airplane"
         case .link: "link"
         case .mine: "heart.fill"
+        case .settings: "gearshape.fill"
         }
     }
 }
 
+extension Notification.Name { static let osaGalleryTab = Notification.Name("osaGalleryTab") }
+
 @MainActor
 final class GalleryModel: ObservableObject {
-    @Published var tab: GalleryTab = GalleryTab.allCases.first { $0.rawValue == ProcessInfo.processInfo.environment["OSAWALLPAPER_GALLERY"] } ?? .photos
+    nonisolated(unsafe) static var requestedTab: GalleryTab?              // onglet demandé avant l'ouverture de la fenêtre (menu « Réglages… »)
+    @Published var tab: GalleryTab = GalleryModel.requestedTab
+        ?? GalleryTab.allCases.first { $0.rawValue == ProcessInfo.processInfo.environment["OSAWALLPAPER_GALLERY"] } ?? .photos
     @Published var selected: Wallpaper?
 
     // Photos (Wallhaven)
@@ -86,6 +91,7 @@ struct GalleryView: View {
     @ObservedObject var prefs: Prefs
     @ObservedObject private var names = PhotoNames.shared
     var onPreview: () -> Void
+    var settings: AnyView? = nil
     @Namespace private var tabNS
 
     private var shown: Wallpaper? { (model.selected ?? store.current).map(named) }
@@ -120,6 +126,9 @@ struct GalleryView: View {
             store.applyNames(names.names)
         }
         .onChange(of: names.names) { store.applyNames(names.names) }
+        .onReceive(NotificationCenter.default.publisher(for: .osaGalleryTab)) { n in
+            if let t = n.object as? GalleryTab { withAnimation(.spring(duration: 0.3)) { model.tab = t } }
+        }
     }
 
     // MARK: En-tête + onglets
@@ -132,27 +141,36 @@ struct GalleryView: View {
                 Text("Pour ton écran verrouillé et ton bureau").font(.system(size: 12)).foregroundStyle(.white.opacity(0.5))
             }
             Spacer(minLength: 16)
-            HStack(spacing: 2) {
-                ForEach(GalleryTab.allCases) { t in
-                    Button { withAnimation(.spring(duration: 0.3)) { model.tab = t } } label: {
-                        Label(t.rawValue, systemImage: t.icon)
-                            .font(.system(size: 12.5, weight: .semibold))
-                            .padding(.horizontal, 12).frame(height: 30)
-                            .foregroundStyle(model.tab == t ? .black : .white.opacity(0.7))
-                            .background {
-                                if model.tab == t { Capsule().fill(.white).matchedGeometryEffect(id: "tab", in: tabNS) }
-                            }
-                            .contentShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(3)
-            .background(Capsule().fill(.white.opacity(0.07)))
-            .overlay(Capsule().strokeBorder(.white.opacity(0.08)))
+            // Fenêtre étroite : seul l'onglet choisi garde son nom, les autres leur icône.
+            ViewThatFits(in: .horizontal) { tabs(compact: false); tabs(compact: true) }
         }
         .padding(.leading, 22).padding(.trailing, 18)
         .padding(.top, 34).padding(.bottom, 14)
+    }
+
+    private func tabs(compact: Bool) -> some View {
+        HStack(spacing: 2) {
+            ForEach(GalleryTab.allCases) { t in
+                Button { withAnimation(.spring(duration: 0.3)) { model.tab = t } } label: {
+                    Group {
+                        if compact && model.tab != t { Image(systemName: t.icon) } else { Label(t.rawValue, systemImage: t.icon) }
+                    }
+                    .font(.system(size: 12.5, weight: .semibold)).lineLimit(1).fixedSize()
+                    .padding(.horizontal, compact && model.tab != t ? 10 : 12).frame(height: 30)
+                    .foregroundStyle(model.tab == t ? .black : .white.opacity(0.7))
+                    .background {
+                        if model.tab == t { Capsule().fill(.white).matchedGeometryEffect(id: "tab", in: tabNS) }
+                    }
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .help(t.rawValue)
+            }
+        }
+        .padding(3)
+        .background(Capsule().fill(.white.opacity(0.07)))
+        .overlay(Capsule().strokeBorder(.white.opacity(0.08)))
+        .fixedSize()
     }
 
     @ViewBuilder private var content: some View {
@@ -161,6 +179,9 @@ struct GalleryView: View {
         case .aerials: aerialsTab
         case .link: LinkTab(store: store, select: { model.selected = $0 })
         case .mine: mineTab
+        case .settings:
+            ScrollView { settings.padding(.horizontal, 10).padding(.bottom, 20).frame(maxWidth: .infinity) }
+                .scrollIndicators(.never)
         }
     }
 
@@ -375,8 +396,18 @@ struct PreviewPane: View {
                 if prefs.lockFullScreen {
                     Text(store.current?.kind == .image || store.current == nil
                          ? "Ta photo de session, ton nom et le mot de passe restent visibles par-dessus. Ton bureau ne change pas."
-                         : "Ta photo de session, ton nom et le mot de passe restent visibles ; autour d’eux, la vidéo se fond dans une image fixe. Ton bureau ne change pas.")
+                         : AXIsProcessTrusted()
+                            ? "La vidéo tourne partout ; ta photo de session, ton nom et le champ du mot de passe restent visibles. Ton bureau ne change pas."
+                            : "Ta photo de session, ton nom et le mot de passe restent visibles ; autour d’eux, la vidéo se fond dans une image fixe. Ton bureau ne change pas.")
                         .font(.system(size: 10.5)).foregroundStyle(.white.opacity(0.4)).fixedSize(horizontal: false, vertical: true)
+                    if store.current.map({ $0.kind != .image }) == true && !AXIsProcessTrusted() {
+                        HStack(alignment: .top, spacing: 8) {
+                            Text("Pour que la vidéo tourne aussi autour de ta photo de session, autorise l’Accessibilité.")
+                                .font(.system(size: 10.5)).foregroundStyle(.orange.opacity(0.85)).fixedSize(horizontal: false, vertical: true)
+                            Button("Autoriser") { AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary) }
+                                .controlSize(.small)
+                        }
+                    }
                 }
                 Text("Quand de la musique joue").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.7)).padding(.top, 4)
                 Picker("", selection: $prefs.wallpaperOverMusic) {

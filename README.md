@@ -53,9 +53,11 @@ Menu OsaWallpaper → **Choisir un fond d’écran…** (⌘F) ouvre une galerie
 
 **Aussi sur le bureau** (dans la galerie, le menu ou les réglages) : le même fond devient celui de ton Mac déverrouillé. Pour une vidéo, tu choisis **Animé** (elle tourne en boucle derrière tes fenêtres, en pause dès que le Mac est verrouillé, en veille ou en économie d’énergie) ou **Image fixe** (une image tirée de la vidéo, zéro CPU). Ton fond d’origine est remis quand tu coupes l’option.
 
-**Fondu ou plein écran** : par défaut ton fond se fond vers le bas pour laisser voir ta photo de session et le champ du mot de passe. En **plein écran**, il couvre tout l’écran ; ta photo de session, ton nom et le champ du mot de passe restent visibles par-dessus, sans trou (pour ça, pendant que le Mac est verrouillé seulement, la même image est posée en fond macOS ; ton bureau retrouve son fond au déverrouillage). Pour une vidéo, la zone autour du champ montre une image fixe de la vidéo.
+**Fondu ou plein écran** : par défaut ton fond se fond vers le bas pour laisser voir ta photo de session et le champ du mot de passe. En **plein écran**, il couvre tout l’écran ; ta photo de session, ton nom et le champ du mot de passe restent visibles par-dessus, sans trou (pour ça, pendant que le Mac est verrouillé seulement, la même image est posée en fond macOS ; ton bureau retrouve son fond au déverrouillage). Pour une vidéo, OsaWallpaper redessine ta photo et ton nom à leur place exacte (lue par l’Accessibilité) : la vidéo tourne partout, seul le champ du mot de passe reste ouvert.
 
-**Dans le Dock seulement quand tu t’en sers** : l’icône apparaît quand la galerie ou les réglages sont ouverts. Quand tu les fermes (ou ⌘Q), elle disparaît et une pastille « App mise en arrière-plan » le dit : l’app continue de tourner pour l’écran verrouillé. Pour la quitter vraiment : ⌥⌘Q ou le menu de la barre des menus.
+**Réglages** : un onglet de la fenêtre, à droite de « Mes fonds » (menu → Réglages…, ⌘,).
+
+**Dans le Dock seulement quand tu t’en sers** : l’icône apparaît quand la fenêtre est ouverte. Quand tu les fermes (ou ⌘Q), elle disparaît et une pastille « App mise en arrière-plan » le dit : l’app continue de tourner pour l’écran verrouillé. Pour la quitter vraiment : ⌥⌘Q ou le menu de la barre des menus.
 
 Sans musique, l’écran verrouillé montre ton fond avec l’heure et la météo. Quand un morceau joue, tu choisis ce qui s’affiche : la pochette de l’album ou ton fond, avec le lecteur par-dessus.
 
@@ -103,7 +105,7 @@ L’icône dans la barre de menus donne accès aux réglages, à l’aperçu et 
 
 ### 🔄 Mises à jour
 
-OsaWallpaper regarde les [Releases](../../releases) de ce dépôt au lancement puis toutes les 12 h. Quand une nouvelle version sort, il propose de l’installer : il la télécharge, vérifie qu’elle est signée par le même développeur, remplace l’app et se relance. Désactivable dans les réglages, ou à la demande via « Rechercher des mises à jour… ».
+OsaWallpaper regarde les [Releases](../../releases) de ce dépôt au lancement puis toutes les heures, et s’installe tout seul : rien à cliquer. Il télécharge la nouvelle version, vérifie qu’elle est signée par le même développeur, remplace l’app et se relance, au moment où ça ne gêne pas (Mac déverrouillé, aucune fenêtre ouverte) ; une pastille annonce ensuite la mise à jour. Désactivable dans les réglages.
 
 ## 🛠️ Compiler
 

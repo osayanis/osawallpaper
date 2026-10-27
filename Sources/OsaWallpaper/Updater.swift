@@ -19,15 +19,24 @@ final class Updater: ObservableObject {
 
     static var current: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0" }
 
-    /// Vérifie au lancement puis toutes les 12 h (si l'option est active).
+    /// Vérifie au lancement puis toutes les heures (si l'option est active) et installe tout seul :
+    /// rien à cliquer. On attend que le Mac soit déverrouillé et qu'aucune fenêtre ne soit ouverte
+    /// (la relance ferait disparaître l'écran verrouillé ou une fenêtre en cours d'utilisation).
     func startAutomaticChecks() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in self?.autoCheck() }
-        timer = Timer.scheduledTimer(withTimeInterval: 12 * 3600, repeats: true) { [weak self] _ in self?.autoCheck() }
+        timer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in self?.autoCheck() }
     }
 
+    /// Le moment est-il bon pour relancer l'app ? (réglé par AppDelegate)
+    var canRelaunch: () -> Bool = { true }
+
     private func autoCheck() {
-        guard Prefs.shared.autoUpdate else { return }
-        check { [weak self] r in if let r { self?.propose(r, manual: false) } }
+        guard Prefs.shared.autoUpdate, !busy else { return }
+        check { [weak self] r in
+            guard let self, let r else { return }
+            if self.canRelaunch() { self.install(r, silent: true) }
+            else { DispatchQueue.main.asyncAfter(deadline: .now() + 120) { self.autoCheck() } }   // réessaie bientôt
+        }
     }
 
     /// « Rechercher des mises à jour… » : répond toujours, même s'il n'y a rien.
@@ -104,7 +113,7 @@ final class Updater: ObservableObject {
 
     // MARK: Installation
 
-    func install(_ r: Release) {
+    func install(_ r: Release, silent: Bool = false) {
         guard !busy else { return }
         busy = true
         URLSession.shared.downloadTask(with: r.zip) { tmp, _, err in
@@ -126,6 +135,7 @@ final class Updater: ObservableObject {
                 self.ulog.error("mise à jour échouée : \(error.localizedDescription, privacy: .public)")
                 DispatchQueue.main.async {
                     self.busy = false
+                    guard !silent else { return }          // en automatique : on réessaiera à la prochaine vérification
                     let a = NSAlert(); a.messageText = "La mise à jour a échoué"; a.informativeText = error.localizedDescription
                     NSApp.activate(ignoringOtherApps: true); a.runModal()
                 }
@@ -135,6 +145,7 @@ final class Updater: ObservableObject {
 
     /// Un petit script attend la fin de l'app, remplace le paquet puis la relance.
     private func relaunch(with app: URL) {
+        UserDefaults.standard.set(Self.current, forKey: "updatedFrom")   // la nouvelle version l'annoncera
         let dest = Bundle.main.bundlePath
         let script = """
         while kill -0 \(ProcessInfo.processInfo.processIdentifier) 2>/dev/null; do sleep 0.2; done
