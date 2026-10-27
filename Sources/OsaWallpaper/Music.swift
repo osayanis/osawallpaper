@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import CoreAudio
 import CoreImage
 
 // Musique en cours (Music / Spotify) — même moteur qu'OsaNotch :
@@ -38,7 +39,7 @@ final class MusicWatcher: ObservableObject {
         music = MusicInfo(playing: true, title: "Nuit d’été", artist: "Les Osa", album: "Démo", source: "Music",
                           position: 61, duration: 168, favorite: false)
         sampledAt = Date()
-        lyrics = (0..<40).map { LyricLine(t: 55 + Double($0) * 3, text: ["Et la nuit ne finit jamais", "On danse sous les étoiles", "La mer nous appelle encore"][$0 % 3]) }
+        lyrics = (0..<40).map { LyricLine(t: 55 + Double($0) * 3, text: ["Et la nuit ne finit jamais", "On danse sous les étoiles", "La mer nous appelle encore quand le soleil se couche derrière les collines et que la ville s’endort"][$0 % 3]) }
         if let img = NSImage(contentsOfFile: artPath) {
             artwork = img; backdrop = Self.blurred(img); palette = Self.palette(img)
             if let c = Self.vibrantColor(img) { accent = c }
@@ -48,6 +49,11 @@ final class MusicWatcher: ObservableObject {
             loadMotion("demo", artist: a[0], album: a[1])
         }
     }
+
+    /// Position de ce qu'on entend : le son sort plus tard que la position lue par l'app (AirPods,
+    /// casque Bluetooth, AirPlay…), d'après la latence annoncée par la sortie audio.
+    func heardPosition(at date: Date) -> Double { position(at: date) - outputLatency }
+    private(set) var outputLatency = 0.0
 
     /// Position estimée maintenant (la lecture n'est faite que toutes les 1,5 s).
     func position(at date: Date) -> Double {
@@ -62,6 +68,8 @@ final class MusicWatcher: ObservableObject {
         q.async {
             defer { self.busy = false }
             let out = Shell.osa(Self.script(), timeout: 4)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let sampled = Date().addingTimeInterval(-0.05)   // la position est lue juste avant la fin du script
+            let latency = Self.outputLatency()
             guard let out, !out.isEmpty, out != "none" else {
                 DispatchQueue.main.async {
                     if self.music != nil { self.music = nil; self.artwork = nil; self.backdrop = nil; self.palette = []; self.lyrics = []; self.motionAlbum = ""; self.setMotion(nil) }
@@ -79,13 +87,14 @@ final class MusicWatcher: ObservableObject {
             let art = p.count > 8 ? p[8] : ""
             let k = "\(info.artist)|\(info.title)"
             DispatchQueue.main.async {
-                // On ne republie que si quelque chose a vraiment changé : la position
-                // est interpolée localement, inutile de tout redessiner toutes les 1,5 s.
-                let drift = abs(self.position(at: Date()) - info.position)
+                self.outputLatency = latency
+                // On ne republie que si quelque chose a vraiment changé : la position est interpolée
+                // localement. Recalée dès 0,25 s d'écart, pour que les paroles restent calées.
+                let drift = abs(self.position(at: sampled) - info.position)
                 if let old = self.music, old.title == info.title, old.artist == info.artist, old.playing == info.playing,
-                   old.favorite == info.favorite, old.duration == info.duration, drift < 1.5 {
+                   old.favorite == info.favorite, old.duration == info.duration, drift < 0.25 {
                 } else {
-                    self.music = info; self.sampledAt = Date()
+                    self.music = info; self.sampledAt = sampled
                 }
                 if k != self.key {
                     self.key = k
@@ -215,18 +224,25 @@ final class MusicWatcher: ObservableObject {
             guard let s = j?["syncedLyrics"] as? String else { return [] }
             return parseLRC(s)
         }
-        /// Meilleur résultat d'une recherche : paroles synchronisées, durée la plus proche (±8 s si connue).
+        /// Meilleur résultat d'une recherche : même artiste (une autre chanson du même titre aurait
+        /// d'autres paroles), paroles synchronisées, durée la plus proche (±4 s si connue : une autre
+        /// version du morceau décalerait toutes les lignes).
         func best(_ arr: [[String: Any]]) -> [LyricLine] {
-            let cands = arr.filter { ($0["syncedLyrics"] as? String)?.isEmpty == false }
+            let cands = arr.filter { ($0["syncedLyrics"] as? String)?.isEmpty == false && sameArtist($0["artistName"] as? String ?? "") }
             let scored = cands.map { c -> (Double, [String: Any]) in
                 let d = (c["duration"] as? Double) ?? 0
                 return (duration > 0 && d > 0 ? abs(d - duration) : 0, c)
             }.sorted { $0.0 < $1.0 }
-            guard let first = scored.first, duration <= 0 || first.0 <= 8 else { return [] }
+            guard let first = scored.first, duration <= 0 || first.0 <= 4 else { return [] }
             return synced(first.1)
         }
 
         let cleanTitle = cleanTrack(title), mainArtist = cleanArtist(artist)
+        func norm(_ s: String) -> String { s.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil).filter { $0.isLetter || $0.isNumber } }
+        func sameArtist(_ a: String) -> Bool {
+            let x = norm(a), y = norm(mainArtist)
+            return !x.isEmpty && !y.isEmpty && (x.contains(y) || y.contains(x))
+        }
         let dur = duration > 0 ? "&duration=\(Int(duration.rounded()))" : ""
         var attempts: [String] = []
         if duration > 0 {
@@ -243,7 +259,6 @@ final class MusicWatcher: ObservableObject {
         let searches = [
             "search?track_name=\(enc(cleanTitle))&artist_name=\(enc(mainArtist))",
             "search?q=\(enc("\(mainArtist) \(cleanTitle)"))",
-            "search?track_name=\(enc(cleanTitle))",
         ]
         for q in searches {
             let l = best((await fetch(q) as? [[String: Any]]) ?? [])
@@ -405,6 +420,29 @@ final class MusicWatcher: ObservableObject {
     }
 
     /// Pochette très floutée et légèrement assombrie, calculée une seule fois par morceau.
+    /// Latence de la sortie audio par défaut, en secondes (CoreAudio : appareil + flux + tampon).
+    static func outputLatency() -> Double {
+        func get<T>(_ id: AudioObjectID, _ sel: AudioObjectPropertySelector, _ scope: AudioObjectPropertyScope, _ v: inout T) -> Bool {
+            var a = AudioObjectPropertyAddress(mSelector: sel, mScope: scope, mElement: kAudioObjectPropertyElementMain)
+            var size = UInt32(MemoryLayout<T>.size)
+            return AudioObjectGetPropertyData(id, &a, 0, nil, &size, &v) == noErr
+        }
+        var dev = AudioObjectID(0)
+        guard get(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultOutputDevice, kAudioObjectPropertyScopeGlobal, &dev) else { return 0 }
+        var lat: UInt32 = 0, safe: UInt32 = 0, buf: UInt32 = 0, stream: UInt32 = 0, rate: Float64 = 0
+        _ = get(dev, kAudioDevicePropertyLatency, kAudioObjectPropertyScopeOutput, &lat)
+        _ = get(dev, kAudioDevicePropertySafetyOffset, kAudioObjectPropertyScopeOutput, &safe)
+        _ = get(dev, kAudioDevicePropertyBufferFrameSize, kAudioObjectPropertyScopeGlobal, &buf)
+        guard get(dev, kAudioDevicePropertyNominalSampleRate, kAudioObjectPropertyScopeGlobal, &rate), rate > 0 else { return 0 }
+        var a = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams, mScope: kAudioObjectPropertyScopeOutput, mElement: kAudioObjectPropertyElementMain)
+        var size: UInt32 = 0
+        if AudioObjectGetPropertyDataSize(dev, &a, 0, nil, &size) == noErr, size >= 4 {
+            var ids = [AudioStreamID](repeating: 0, count: Int(size) / 4)
+            if AudioObjectGetPropertyData(dev, &a, 0, nil, &size, &ids) == noErr { _ = get(ids[0], kAudioStreamPropertyLatency, kAudioObjectPropertyScopeGlobal, &stream) }
+        }
+        return min(Double(lat + safe + buf + stream) / rate, 3)
+    }
+
     static func blurred(_ img: NSImage) -> NSImage? {
         guard let cg = img.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
         let src = CIImage(cgImage: cg)
