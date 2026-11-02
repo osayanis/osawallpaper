@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var desktop: DesktopWallpaper?
     private var awake: ScreenAwake!
     private var mascot: MenuMascot?
+    private var suite: SuiteLink?
     private var bag = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ n: Notification) {
@@ -36,6 +37,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         devices.start()
         screens = ScreenManager(music: music, devices: devices, prefs: prefs)
         screens.rebuild()
+        // OsaNotch : nos pastilles son / luminosité remplacent les siennes, et passent sous lui.
+        suite = SuiteLink(prefs: prefs, target: screens.toastTarget)
+        suite?.start()
         desktop = DesktopWallpaper(store: WallpaperStore.shared, prefs: prefs, lock: screens.lock, music: music)
         awake = ScreenAwake(lock: screens.lock, prefs: prefs)
         if let s = ProcessInfo.processInfo.environment["OSAWALLPAPER_AWAKE_TEST"], let t = Double(s) { awake.test(seconds: t) }
@@ -206,6 +210,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let fromDock = ae?.eventID == kAEQuitApplication && ae?.attributeDescriptor(forKeyword: kAEQuitReason) == nil
         if fromDock, NSApp.activationPolicy() == .regular { toBackground(); return .terminateCancel }
         return .terminateNow
+    }
+
+    func applicationWillTerminate(_ n: Notification) {
+        suite?.stop()       // le notch reprend le son et la luminosité
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {

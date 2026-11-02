@@ -414,11 +414,19 @@ struct ToastHost: View {
     @ObservedObject var devices: Devices
     @ObservedObject var target: ToastTarget
     let display: CGDirectDisplayID
+    let top: CGFloat                       // hauteur de la barre des menus sur cet écran
+
+    /// Notification d'OsaNotch déployée sous l'encoche : la pastille descend juste en dessous.
+    private var notchOffset: CGFloat {
+        guard target.notchDisplay == display, target.notchBottom > 0 else { return 0 }
+        return min(ScreenManager.notchRoom, max(0, CGFloat(target.notchBottom) + 6 - top))
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
             if let t = devices.toast, target.display == display {
                 ToastView(toast: t)
-                    .padding(.top, 6)
+                    .padding(.top, 6 + notchOffset)
                     .transition(.asymmetric(
                         insertion: .move(edge: .top).combined(with: .opacity).combined(with: .scale(scale: 0.6, anchor: .top)),
                         removal: .opacity.combined(with: .scale(scale: 0.85, anchor: .top))))
@@ -426,6 +434,7 @@ struct ToastHost: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .foregroundStyle(.white)
+        .animation(.spring(response: 0.38, dampingFraction: 0.82), value: notchOffset)
     }
 }
 

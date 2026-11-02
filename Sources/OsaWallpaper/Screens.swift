@@ -17,8 +17,13 @@ final class HitStore { var rects: [CGRect] = [] }
 /// Position du curseur relative à l'écran (0…1), pour l'effet de relief de la pochette.
 final class CursorModel: ObservableObject { @Published var p = CGPoint(x: 0.5, y: 0.5) }
 
-/// Écran sur lequel afficher la prochaine notification (celui de la souris).
-final class ToastTarget: ObservableObject { @Published var display: CGDirectDisplayID = 0 }
+/// Écran sur lequel afficher la prochaine notification (celui de la souris), et place prise
+/// par OsaNotch en haut de l'écran à encoche (la pastille passe dessous).
+final class ToastTarget: ObservableObject {
+    @Published var display: CGDirectDisplayID = 0
+    @Published var notchBottom: Double = 0        // points sous le haut de l'écran (0 : pas de notch)
+    @Published var notchDisplay: CGDirectDisplayID = 0
+}
 
 extension NSScreen {
     var displayID: CGDirectDisplayID { (deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0 }
@@ -120,7 +125,10 @@ final class ScreenManager {
     // Une fenêtre de notification FIXE par écran : une fenêtre confiée à SkyLight
     // ne doit plus jamais être déplacée ni redimensionnée (elle se place mal ensuite).
     private var toastPanels: [OverlayPanel] = []
-    private let toastTarget = ToastTarget()
+    let toastTarget = ToastTarget()
+    /// Place réservée sous la pastille pour descendre sous le notch déployé (fenêtre fixe :
+    /// on décale le contenu, jamais la fenêtre).
+    static let notchRoom: CGFloat = 300
     private var timer: Timer?
     private var bag = Set<AnyCancellable>()
     private var lastMouse = NSPoint(x: -1, y: -1)
@@ -168,9 +176,9 @@ final class ScreenManager {
         toastPanels.forEach { $0.orderOut(nil); $0.close() }
         toastPanels = NSScreen.screens.map { sc in
             let top = max(sc.frame.maxY - sc.visibleFrame.maxY, sc.safeAreaInsets.top)
-            let w: CGFloat = 340, h: CGFloat = 84
+            let w: CGFloat = 340, h: CGFloat = 84 + Self.notchRoom
             let p = OverlayPanel(frame: NSRect(x: sc.frame.midX - w / 2, y: sc.frame.maxY - top - h, width: w, height: h))
-            p.contentView = NSHostingView(rootView: ToastHost(devices: devices, target: toastTarget, display: sc.displayID).frame(width: w, height: h))
+            p.contentView = NSHostingView(rootView: ToastHost(devices: devices, target: toastTarget, display: sc.displayID, top: top).frame(width: w, height: h))
             p.lift()
             return p
         }
