@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var awake: ScreenAwake!
     private var mascot: MenuMascot?
     private var suite: SuiteLink?
+    private var hubBag = Set<AnyCancellable>()
     private var bag = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ n: Notification) {
@@ -44,6 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         awake = ScreenAwake(lock: screens.lock, prefs: prefs)
         if let s = ProcessInfo.processInfo.environment["OSAWALLPAPER_AWAKE_TEST"], let t = Double(s) { awake.test(seconds: t) }
         buildStatusItem()
+        linkHub()
         if !Demo.on {
             Updater.shared.canRelaunch = { [weak self] in
                 guard let self else { return false }
@@ -124,6 +126,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.delegate = self
         status.menu = menu
         if let b = status.button { mascot = MenuMascot(button: b) }
+    }
+
+    // MARK: OsaHUB : nos options passent dans son menu, notre icône disparaît tant qu'il tourne
+    private func linkHub() {
+        guard let suite else { return }
+        suite.menuState = { [weak self] in
+            guard let self else { return ([], false) }
+            var info: [String] = []
+            if let w = self.devices.weather { info.append("\(w.city.isEmpty ? "Météo" : w.city) · \(w.temp)°") }
+            if let m = self.music.music { info.append("\(m.playing ? "♪" : "⏸") \(m.title) — \(m.artist)") }
+            return (info, self.music.music != nil || WallpaperStore.shared.current != nil)
+        }
+        suite.onHub = { [weak self] on in self?.status.isVisible = !on }
+        suite.onAction = { [weak self] a in
+            guard let self else { return }
+            switch a {
+            case "open": self.openGallery()
+            case "preview": self.preview()
+            case "settings": self.openSettings()
+            case "quit": NSApp.terminate(nil)
+            default: break
+            }
+        }
+        status.isVisible = !suite.hubPresent
+        // Morceau ou météo qui changent : OsaHUB a toujours le bon menu
+        music.$music.map { $0.map { "\($0.playing)\($0.title)\($0.artist)" } ?? "" }.removeDuplicates()
+            .combineLatest(devices.$weather.map { $0.map { "\($0.city)\($0.temp)" } ?? "" }.removeDuplicates())
+            .debounce(for: .seconds(1), scheduler: RunLoop.main)
+            .sink { [weak suite] _ in if suite?.hubPresent == true { suite?.publishMenu() } }
+            .store(in: &hubBag)
     }
 
     // MARK: Fenêtres
