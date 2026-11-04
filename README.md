@@ -14,6 +14,8 @@ Et partout ailleurs, tes AirPods, ta charge, le volume, la luminosité et la mé
 ![Taille](https://img.shields.io/badge/app-1%2C6%20Mo-34c759)
 ![OsaLabs](https://img.shields.io/badge/un%20projet-OsaLabs-b7a5ff)
 
+**[Installer avec OsaHUB](https://github.com/osayanis/osahub/releases/latest/download/OsaHUB.dmg)** · l’app qui installe et met à jour toute la suite Osa
+
 </div>
 
 <p align="center">
@@ -98,6 +100,8 @@ Une fenêtre de bienvenue te guide en trois étapes :
 Pas de caméra, pas de micro, pas de localisation : la météo utilise une position approximative déduite de ta connexion, ou la ville de ton choix.
 
 ## 📦 Installation
+
+> **Ou avec [OsaHUB](https://github.com/osayanis/osahub/releases/latest/download/OsaHUB.dmg)** : il installe OsaWallpaper en un clic, avec le reste de la suite Osa, et le garde à jour.
 
 1. Télécharge `OsaWallpaper.dmg` depuis les [Releases](../../releases) et glisse l’app dans **Applications**.
 2. Ouvre-la. L’app n’est pas notarisée : la première fois, fais **clic droit → Ouvrir**.
